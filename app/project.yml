@@ -1,0 +1,57 @@
+name: Argon
+options:
+  bundleIdPrefix: net.imput
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    ARGON_CORE_OUT: "$(HOME)/chromium/src/out/Core"
+    ARGON_CORE_FRAMEWORK: "Chromium Framework"
+
+targets:
+  Argon:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleName: Argon
+        CFBundleDisplayName: Argon
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        NSPrincipalClass: BrowserCrApplication
+        LSMinimumSystemVersion: "13.0"
+        NSSupportsAutomaticGraphicsSwitching: true
+        NSHighResolutionCapable: true
+        NSBluetoothAlwaysUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSBluetoothPeripheralUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSCameraUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSMicrophoneUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSLocationUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSLocationWhenInUseUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSAudioCaptureUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSContactsUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSLocalNetworkUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSScreenCaptureUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.argon.browser
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Argon-Bridging-Header.h
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/../core/public"
+        FRAMEWORK_SEARCH_PATHS: "$(ARGON_CORE_OUT)"
+        OTHER_LDFLAGS: "-framework \"$(ARGON_CORE_FRAMEWORK)\""
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks $(ARGON_CORE_OUT)"
+        ENABLE_HARDENED_RUNTIME: false
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: Z7JCWW3N99
+    postBuildScripts:
+      - name: Embed ArgonCore
+        script: "\"$SRCROOT/scripts/embed_core.sh\""
+        basedOnDependencyAnalysis: false

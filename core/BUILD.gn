@@ -1,0 +1,86 @@
+# Copyright 2026 The Argon Authors
+# You can use, redistribute, and/or modify this source code under
+# the terms of the GPL-3.0 license that can be found in the LICENSE file.
+
+assert(is_mac)
+
+config("public_headers") {
+  include_dirs = [ "public" ]
+}
+
+source_set("core") {
+  sources = [
+    "browser/ac_application.mm",
+    "browser/ac_autocomplete.mm",
+    "browser/ac_browser_main_extra_parts.h",
+    "browser/ac_browser_main_extra_parts.mm",
+    "browser/ac_content_browser_client.cc",
+    "browser/ac_content_browser_client.h",
+    "browser/ac_download.mm",
+    "browser/ac_internal.h",
+    "browser/ac_profile.mm",
+    "browser/ac_tab.mm",
+    "browser/ac_permission_prompt.h",
+    "browser/ac_permission_prompt.mm",
+    "browser/ac_tab_host.h",
+    "browser/ac_tab_host.mm",
+  ]
+  public = [
+    "public/ACApplication.h",
+    "public/ACAutocomplete.h",
+    "public/ACDownload.h",
+    "public/ACExport.h",
+    "public/ACMain.h",
+    "public/ACProfile.h",
+    "public/ACTab.h",
+    "public/ArgonCore.h",
+  ]
+  public_configs = [ ":public_headers" ]
+  friend = [ "//chrome:chrome_dll" ]
+
+  deps = [
+    "//base",
+    "//chrome/browser",
+    "//chrome/browser/autocomplete",
+    "//chrome/browser:chrome_browser_main",
+    "//chrome/browser:chrome_content_browser_client",
+    "//chrome/browser:file_select_helper",
+    "//chrome/browser/devtools",
+    "//chrome/browser/devtools:devtools_contents_resizing_strategy",
+    "//chrome/browser/devtools:devtools_toggle_action",
+    "//chrome/browser/favicon",
+    "//chrome/browser/lifetime",
+    "//chrome/browser/media/webrtc",
+    "//chrome/browser/printing",
+    "//chrome/browser/ui/find_bar",
+    "//chrome/browser/ui/views/eye_dropper",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/search_engines",
+    "//chrome/browser/ui:tab_helpers",
+    "//chrome/common",
+    "//components/download/content/public",
+    "//components/download/public/common:public",
+    "//components/favicon/content",
+    "//components/find_in_page",
+    "//components/javascript_dialogs",
+    "//components/keep_alive_registry",
+    "//components/omnibox/browser",
+    "//components/permissions",
+    "//components/prefs",
+    "//components/url_formatter",
+    "//components/web_modal",
+    "//content/public/app",
+    "//content/public/browser",
+    "//net",
+    "//third_party/blink/public/common",
+    "//ui/base",
+    "//ui/gfx",
+    "//ui/views",
+    "//url",
+  ]
+
+  frameworks = [
+    "AppKit.framework",
+    "Foundation.framework",
+  ]
+}

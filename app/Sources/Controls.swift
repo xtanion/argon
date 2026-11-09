@@ -1,0 +1,543 @@
+import AppKit
+
+// Base for sidebar views: flipped, layer-backed, hover-aware, never drags the
+// window.
+@MainActor
+class HoverView: NSView {
+    private(set) var isHovered = false
+    var onHoverChange: ((Bool) -> Void)?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHovered(true) }
+    override func mouseExited(with event: NSEvent) { setHovered(false) }
+
+    func setHovered(_ hovered: Bool) {
+        guard hovered != isHovered else { return }
+        isHovered = hovered
+        needsDisplay = true
+        hoverChanged()
+        onHoverChange?(hovered)
+    }
+
+    func hoverChanged() {}
+}
+
+@MainActor
+final class IconButton: HoverView {
+    private let imageView = NSImageView()
+    private var glyphLayer: CALayer?
+    var action: (() -> Void)?
+    var tint: NSColor = Palette.icon { didSet { imageView.contentTintColor = tint; needsDisplay = true } }
+    var isEnabled = true {
+        didSet { imageView.alphaValue = isEnabled ? 1 : 0.35; needsDisplay = true }
+    }
+
+    init(symbol: String, size: CGFloat, toolTip: String? = nil, action: (() -> Void)? = nil) {
+        self.action = action
+        super.init(frame: .zero)
+        imageView.image = .symbol(symbol, size: size)
+        imageView.contentTintColor = tint
+        imageView.imageScaling = .scaleNone
+        addSubview(imageView)
+        self.toolTip = toolTip
+    }
+
+    func setSymbol(_ symbol: String, size: CGFloat) {
+        imageView.image = .symbol(symbol, size: size)
+        needsDisplay = true
+    }
+
+    // Moves the icon into a layer this view owns so it can rotate; AppKit resets a view's own transform.
+    func rotateGlyph(to radians: CGFloat, animated: Bool) {
+        let glyph = glyphLayer ?? {
+            let glyph = CALayer()
+            glyph.contentsGravity = .center
+            layer?.addSublayer(glyph)
+            glyphLayer = glyph
+            imageView.isHidden = true
+            updateGlyph()
+            needsLayout = true
+            return glyph
+        }()
+        Motion.rotate(glyph, to: radians, animated: animated)
+    }
+
+    private func updateGlyph() {
+        guard let glyphLayer else { return }
+        let color = NSColor(cgColor: tint.cgColor) ?? tint
+        glyphLayer.contentsScale = window?.backingScaleFactor ?? 2
+        glyphLayer.contents = imageView.image?.tinted(color)
+        glyphLayer.opacity = isEnabled ? 1 : 0.35
+    }
+
+    override func layout() {
+        super.layout()
+        imageView.frame = bounds
+        guard let glyphLayer else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        glyphLayer.bounds = CGRect(origin: .zero, size: bounds.size)
+        glyphLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        CATransaction.commit()
+    }
+
+    override func updateLayer() {
+        layer?.cornerRadius = Metrics.buttonRadius
+        layer?.backgroundColor = (isHovered && isEnabled) ? Palette.tabHover.cgColor : nil
+        updateGlyph()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        layer?.backgroundColor = Palette.tabActive.cgColor
+        Motion.press(self, scale: 0.9)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        needsDisplay = true
+        Motion.release(self)
+        guard isEnabled, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        action?()
+    }
+}
+
+@MainActor
+final class HairlineView: NSView {
+    var inset: CGFloat
+    var color: NSColor
+
+    init(inset: CGFloat = 10, color: NSColor = Palette.hairline) {
+        self.inset = inset
+        self.color = color
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        color.setFill()
+        let scale = window?.backingScaleFactor ?? 2
+        NSRect(x: inset, y: (bounds.height - 1 / scale) / 2, width: bounds.width - inset * 2, height: 1 / scale).fill()
+    }
+}
+
+extension NSTextField {
+    static func sidebarLabel(_ text: String = "", font: NSFont = Typography.sidebar, color: NSColor = Palette.text) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = font
+        label.textColor = color
+        label.lineBreakMode = .byTruncatingTail
+        label.cell?.truncatesLastVisibleLine = true
+        label.maximumNumberOfLines = 1
+        return label
+    }
+}
+
+struct ToastAction {
+    var symbol: String
+    var toolTip: String?
+    var handler: @MainActor (NSView) -> Void
+}
+
+// Transient notification pill shown over the page; present it through RootView.showToast.
+@MainActor
+final class ToastView: HoverView {
+    private static let height: CGFloat = 44
+    private static let inset: CGFloat = 16
+    private static let actionSize: CGFloat = 30
+
+    var onDismiss: (() -> Void)?
+    var fillColor: NSColor = Palette.ink { didSet { needsDisplay = true } }
+
+    private let label: NSTextField
+    private let iconView = NSImageView()
+    private let actionBackground = NSView()
+    private let actionButton: IconButton?
+    private let duration: TimeInterval
+    private var dismissWork: DispatchWorkItem?
+
+    init(message: String, icon: String? = nil, action: ToastAction? = nil, duration: TimeInterval = 2.5) {
+        label = .sidebarLabel(message, font: .systemFont(ofSize: 14, weight: .semibold), color: Palette.text)
+        label.lineBreakMode = .byClipping
+        actionButton = action.map { IconButton(symbol: $0.symbol, size: 14, toolTip: $0.toolTip) }
+        self.duration = duration
+        super.init(frame: .zero)
+        layer?.cornerRadius = 14
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 0.5
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.3
+        layer?.shadowRadius = 12
+        layer?.shadowOffset = CGSize(width: 0, height: -4)
+        addSubview(label)
+        if let icon {
+            iconView.image = .symbol(icon, size: 14, weight: .semibold)
+            iconView.contentTintColor = Palette.text
+            iconView.imageScaling = .scaleNone
+            addSubview(iconView)
+        }
+        if let action, let actionButton {
+            actionBackground.wantsLayer = true
+            actionBackground.layer?.cornerRadius = 8
+            actionBackground.layer?.cornerCurve = .continuous
+            actionButton.tint = Palette.text
+            actionButton.action = { [weak self, weak actionButton] in
+                guard let self, let actionButton else { return }
+                action.handler(actionButton)
+                self.scheduleDismiss(after: 1.5)
+            }
+            addSubview(actionBackground)
+            actionBackground.addSubview(actionButton)
+        }
+        setFrameSize(NSSize(width: ceil(contentWidth), height: Self.height))
+    }
+
+    private var hasIcon: Bool { iconView.image != nil }
+    private var textWidth: CGFloat { ceil(max(label.cell?.cellSize.width ?? 0, label.attributedStringValue.size().width + 4)) }
+    private var textX: CGFloat { Self.inset + (hasIcon ? 22 : 0) }
+
+    private var contentWidth: CGFloat {
+        textX + textWidth + (actionButton == nil ? Self.inset : 12 + Self.actionSize + 7)
+    }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height
+        iconView.frame = NSRect(x: Self.inset - 2, y: (h - 20) / 2, width: 20, height: 20)
+        label.frame = NSRect(x: textX, y: (h - 18) / 2, width: textWidth, height: 18)
+        actionBackground.frame = NSRect(x: bounds.width - 7 - Self.actionSize, y: (h - Self.actionSize) / 2,
+                                        width: Self.actionSize, height: Self.actionSize)
+        actionButton?.frame = actionBackground.bounds
+    }
+
+    override func updateLayer() {
+        layer?.backgroundColor = fillColor.cgColor
+        layer?.borderColor = Palette.hairline.cgColor
+        actionBackground.layer?.backgroundColor = Palette.tabActive.cgColor
+    }
+
+    override func hoverChanged() {
+        if isHovered { dismissWork?.cancel() } else { scheduleDismiss(after: 1.2) }
+    }
+
+    override func mouseDown(with event: NSEvent) {}
+
+    func present(in parent: NSView, at origin: NSPoint) {
+        setFrameOrigin(origin)
+        parent.addSubview(self)
+        if !Motion.reduced, let layer {
+            let move = CASpringAnimation(keyPath: "transform.translation.y")
+            move.fromValue = -10
+            move.toValue = 0
+            move.stiffness = 260
+            move.damping = 22
+            move.duration = move.settlingDuration
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            fade.duration = 0.18
+            layer.add(move, forKey: "in.move")
+            layer.add(fade, forKey: "in.fade")
+        }
+        scheduleDismiss(after: duration)
+    }
+
+    func scheduleDismiss(after delay: TimeInterval) {
+        dismissWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.dismiss() }
+        dismissWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    func dismiss() {
+        dismissWork?.cancel()
+        guard superview != nil else { return }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Motion.reduced ? 0 : 0.2
+            animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            self?.removeFromSuperview()
+            self?.onDismiss?()
+        })
+    }
+}
+
+struct ActionMenuItem {
+    var title: String
+    var symbol: String
+    var shortcut: String?
+    var handler: @MainActor () -> Void
+}
+
+enum ActionMenuEntry {
+    case item(ActionMenuItem)
+    case separator
+}
+
+// Arc-style popover menu of large icon rows; show it with ActionMenu.show(_:relativeTo:).
+@MainActor
+final class ActionMenu: NSObject, NSPopoverDelegate {
+    private static let width: CGFloat = 228
+    private static let rowHeight: CGFloat = 40
+    private static let inset: CGFloat = 8
+
+    var onClose: (() -> Void)?
+    private let popover = NSPopover()
+    private(set) var closedAt: CFTimeInterval = 0
+
+    var isShown: Bool { popover.isShown }
+
+    init(entries: [ActionMenuEntry]) {
+        super.init()
+        let content = ActionMenuContentView()
+        var y = Self.inset
+        for entry in entries {
+            switch entry {
+            case .item(let item):
+                let row = ActionMenuRow(item: item)
+                row.frame = NSRect(x: Self.inset, y: y, width: Self.width - 2 * Self.inset, height: Self.rowHeight)
+                row.onSelect = { [weak self] in
+                    self?.popover.performClose(nil)
+                    item.handler()
+                }
+                content.addSubview(row)
+                y += Self.rowHeight
+            case .separator:
+                let line = HairlineView(inset: 0)
+                line.frame = NSRect(x: Self.inset + 10, y: y + 5, width: Self.width - 2 * Self.inset - 20, height: 1)
+                content.addSubview(line)
+                y += 11
+            }
+        }
+        content.frame = NSRect(x: 0, y: 0, width: Self.width, height: y + Self.inset)
+        let controller = NSViewController()
+        controller.view = content
+        popover.contentViewController = controller
+        popover.behavior = .transient
+        popover.animates = !Motion.reduced
+        popover.delegate = self
+        content.onCancel = { [weak self] in self?.close() }
+    }
+
+    func show(relativeTo view: NSView, edge: NSRectEdge = .minY) {
+        popover.appearance = view.effectiveAppearance
+        popover.show(relativeTo: view.bounds, of: view, preferredEdge: edge)
+        let content = popover.contentViewController?.view
+        content?.window?.makeKey()
+        content?.window?.makeFirstResponder(content)
+    }
+
+    func close() { popover.performClose(nil) }
+
+    func popoverWillClose(_ notification: Notification) {
+        closedAt = CACurrentMediaTime()
+        onClose?()
+    }
+}
+
+@MainActor
+final class ActionMenuContentView: NSView {
+    var onCancel: (() -> Void)?
+
+    override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+    override func cancelOperation(_ sender: Any?) { onCancel?() }
+}
+
+@MainActor
+final class ActionMenuRow: HoverView {
+    var onSelect: (() -> Void)?
+    private let iconView = NSImageView()
+    private let titleLabel: NSTextField
+    private let shortcutLabel: NSTextField
+
+    init(item: ActionMenuItem) {
+        titleLabel = .sidebarLabel(item.title, font: .systemFont(ofSize: 14, weight: .semibold), color: Palette.text)
+        shortcutLabel = .sidebarLabel(item.shortcut ?? "", font: .systemFont(ofSize: 13), color: Palette.faint)
+        shortcutLabel.alignment = .right
+        super.init(frame: .zero)
+        iconView.image = .symbol(item.symbol, size: 16, weight: .medium)
+        iconView.contentTintColor = Palette.text
+        iconView.imageScaling = .scaleNone
+        for view in [iconView, titleLabel, shortcutLabel] as [NSView] { addSubview(view) }
+    }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height
+        iconView.frame = NSRect(x: 8, y: (h - 24) / 2, width: 24, height: 24)
+        shortcutLabel.frame = NSRect(x: bounds.width - 60, y: (h - 17) / 2, width: 50, height: 17)
+        titleLabel.frame = NSRect(x: 42, y: (h - 18) / 2, width: shortcutLabel.frame.minX - 46, height: 18)
+    }
+
+    override func updateLayer() {
+        layer?.cornerRadius = 10
+        layer?.cornerCurve = .continuous
+        layer?.backgroundColor = isHovered ? Palette.tabHover.cgColor : nil
+    }
+
+    override func mouseDown(with event: NSEvent) { Motion.press(self, scale: 0.97) }
+
+    override func mouseUp(with event: NSEvent) {
+        Motion.release(self)
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        onSelect?()
+    }
+}
+
+final class LoadingRing: NSView {
+    var lineWidth: CGFloat = 1.5 { didSet { needsLayout = true } }
+    var color: NSColor = Palette.icon { didSet { needsDisplay = true } }
+    var spins = true
+
+    private let spin = CALayer()
+    private let track = CAShapeLayer()
+    private let arc = CAShapeLayer()
+    private(set) var isAnimating = false
+    private var progress: CGFloat = 0
+    private var finishWork: DispatchWorkItem?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        for shape in [track, arc] {
+            shape.fillColor = nil
+            shape.lineCap = .round
+            spin.addSublayer(shape)
+        }
+        arc.strokeEnd = 0
+        layer?.addSublayer(spin)
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+    override var wantsUpdateLayer: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let side = min(bounds.width, bounds.height)
+        let rect = NSRect(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2, width: side, height: side)
+        spin.bounds = CGRect(origin: .zero, size: rect.size)
+        spin.position = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = (side - lineWidth) / 2 - 1
+        let center = CGPoint(x: side / 2, y: side / 2)
+        let path = CGMutablePath()
+        path.addArc(center: center, radius: radius, startAngle: -.pi / 2, endAngle: 3 * .pi / 2, clockwise: false)
+        for shape in [track, arc] {
+            shape.frame = spin.bounds
+            shape.path = path
+            shape.lineWidth = lineWidth
+        }
+        CATransaction.commit()
+    }
+
+    override func updateLayer() {
+        let cg = color.cgColor
+        track.strokeColor = cg.copy(alpha: cg.alpha * 0.3)
+        arc.strokeColor = cg
+    }
+
+    func start(progress initial: CGFloat) {
+        let wasFinishing = finishWork != nil
+        finishWork?.cancel()
+        finishWork = nil
+        alphaValue = 1
+        if !isAnimating || wasFinishing {
+            isAnimating = true
+            isHidden = false
+            alphaValue = 1
+            progress = 0
+            setStroke(0, animated: false)
+        }
+        if spins, spin.animation(forKey: "spin") == nil {
+            let rotation = CABasicAnimation(keyPath: "transform.rotation.z")
+            rotation.fromValue = 0
+            rotation.toValue = 2 * CGFloat.pi
+            rotation.duration = 2
+            rotation.repeatCount = .infinity
+            spin.add(rotation, forKey: "spin")
+        }
+        setProgress(initial)
+    }
+
+    func setProgress(_ value: CGFloat) {
+        let clamped = min(max(value, 0.08), 1)
+        guard clamped > progress else { return }
+        progress = clamped
+        setStroke(clamped, animated: true)
+    }
+
+    func finish(completion: @escaping @MainActor () -> Void) {
+        guard isAnimating else { completion(); return }
+        if finishWork != nil { return }
+        progress = 1
+        setStroke(1, animated: true)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                self.animator().alphaValue = 0
+            }
+            let done = DispatchWorkItem { [weak self] in
+                guard let self, self.finishWork != nil else { return }
+                self.stop()
+                completion()
+            }
+            self.finishWork = done
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: done)
+        }
+        finishWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    func stop() {
+        finishWork?.cancel()
+        finishWork = nil
+        isAnimating = false
+        isHidden = true
+        alphaValue = 1
+        spin.removeAnimation(forKey: "spin")
+        progress = 0
+        setStroke(0, animated: false)
+    }
+
+    private func setStroke(_ value: CGFloat, animated: Bool) {
+        CATransaction.begin()
+        if animated {
+            CATransaction.setAnimationDuration(0.25)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        } else {
+            CATransaction.setDisableActions(true)
+        }
+        arc.strokeEnd = value
+        CATransaction.commit()
+    }
+}

@@ -1,0 +1,571 @@
+diff --git a/chrome/BUILD.gn b/chrome/BUILD.gn
+index f1d133b6cd..bd7ff36086 100644
+--- a/chrome/BUILD.gn
++++ b/chrome/BUILD.gn
+@@ -12,6 +12,7 @@ import("//build/config/python.gni")
+ import("//build/config/sanitizers/sanitizers.gni")
+ import("//build/config/ui.gni")
+ import("//build/config/win/console_app.gni")
++import("//argon_core/argon_core.gni")
+ import("//build/config/win/manifest.gni")
+ import("//build/private_code_test/private_code_test.gni")
+ import("//build/toolchain/toolchain.gni")
+@@ -1321,12 +1322,14 @@ if (is_win) {
+       "app/chrome_main_mac.mm",
+       "app/startup_timestamps.h",
+     ]
++    sources += argon_core_app_sources
+ 
+     deps = [
+       ":dependencies",
+       "//build:chromeos_buildflags",
+       "//chrome/app:command_ids",
+       "//chrome/browser:chrome_browser_application_mac",
++      "//argon_core:core",
+       "//chrome/browser:chrome_content_browser_client",
+       "//chrome/browser:chrome_process_singleton",
+       "//chrome/browser:process_singleton",
+diff --git a/chrome/app/chrome_main.cc b/chrome/app/chrome_main.cc
+index 199142d671..74f9a61bdb 100644
+--- a/chrome/app/chrome_main.cc
++++ b/chrome/app/chrome_main.cc
+@@ -133,6 +133,12 @@ int ChromeMain(int argc, const char** argv) {
+ #else  // BUILDFLAG(IS_WIN)
+   ChromeMainDelegate chrome_main_delegate(
+       {.exe_entry_point_ticks = base::TimeTicks::Now()});
++  return ChromeMainWithDelegate(argc, argv, chrome_main_delegate);
++}
++
++int ChromeMainWithDelegate(int argc,
++                           const char** argv,
++                           ChromeMainDelegate& chrome_main_delegate) {
+ #endif
+   content::ContentMainParams params(&chrome_main_delegate);
+ 
+diff --git a/chrome/app/chrome_main.h b/chrome/app/chrome_main.h
+index dc97352790..e5453f8c91 100644
+--- a/chrome/app/chrome_main.h
++++ b/chrome/app/chrome_main.h
+@@ -5,6 +5,8 @@
+ #ifndef CHROME_APP_CHROME_MAIN_H_
+ #define CHROME_APP_CHROME_MAIN_H_
+ 
++#include "build/build_config.h"
++
+ namespace base {
+ class CommandLine;
+ }
+@@ -15,4 +17,13 @@ class CommandLine;
+ // This function is only available in the browser process.
+ const base::CommandLine& GetInitialBrowserCommandLine();
+ 
++#if BUILDFLAG(IS_POSIX)
++class ChromeMainDelegate;
++
++// ChromeMain with an embedder-provided main delegate.
++int ChromeMainWithDelegate(int argc,
++                           const char** argv,
++                           ChromeMainDelegate& chrome_main_delegate);
++#endif
++
+ #endif  // CHROME_APP_CHROME_MAIN_H_
+diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
+index 0447c4084b..e9b9d6ab39 100644
+--- a/chrome/app/chrome_main_delegate.cc
++++ b/chrome/app/chrome_main_delegate.cc
+@@ -1886,11 +1886,17 @@ content::ContentClient* ChromeMainDelegate::CreateContentClient() {
+   return &chrome_content_client_;
+ }
+ 
++#if !defined(BUILDING_CHROME_RENDERER)
++std::unique_ptr<ChromeContentBrowserClient>
++ChromeMainDelegate::CreateChromeContentBrowserClient() {
++  return std::make_unique<ChromeContentBrowserClient>();
++}
++#endif
++
+ content::ContentBrowserClient*
+ ChromeMainDelegate::CreateContentBrowserClient() {
+ #if !defined(BUILDING_CHROME_RENDERER)
+-  chrome_content_browser_client_ =
+-      std::make_unique<ChromeContentBrowserClient>();
++  chrome_content_browser_client_ = CreateChromeContentBrowserClient();
+ #if !BUILDFLAG(IS_ANDROID)
+   // Android does this in `ChromeMainDelegateAndroid::PreSandboxStartup`.
+   CHECK(sampling_profiler_);
+diff --git a/chrome/app/chrome_main_delegate.h b/chrome/app/chrome_main_delegate.h
+index 6ea55af3da..c8cdb83528 100644
+--- a/chrome/app/chrome_main_delegate.h
++++ b/chrome/app/chrome_main_delegate.h
+@@ -80,6 +80,11 @@ class ChromeMainDelegate : public content::ContentMainDelegate {
+ 
+   content::ContentClient* CreateContentClient() override;
+   content::ContentBrowserClient* CreateContentBrowserClient() override;
++#if !defined(BUILDING_CHROME_RENDERER)
++  // Lets an embedder supply a ChromeContentBrowserClient subclass.
++  virtual std::unique_ptr<ChromeContentBrowserClient>
++  CreateChromeContentBrowserClient();
++#endif
+   content::ContentGpuClient* CreateContentGpuClient() override;
+   content::ContentRendererClient* CreateContentRendererClient() override;
+   content::ContentUtilityClient* CreateContentUtilityClient() override;
+diff --git a/chrome/browser/app_controller_mac.mm b/chrome/browser/app_controller_mac.mm
+index ead883ef95..35a5afaef0 100644
+--- a/chrome/browser/app_controller_mac.mm
++++ b/chrome/browser/app_controller_mac.mm
+@@ -2298,6 +2298,8 @@ - (void)setLastProfile:(Profile*)profile {
+   if (_lastProfile == nullptr)
+     return;
+ 
++  // Embedders may provide their own main menu without a bookmarks menu.
++  if (bookmarkItem.submenu) {
+   auto& entry = _profileBookmarkMenuBridgeMap[profile->GetPath()];
+   if (!entry || !entry->GetProfile()) {
+     // This creates a deep copy, but only the first 3 items in the root menu
+@@ -2319,6 +2321,7 @@ - (void)setLastProfile:(Profile*)profile {
+   // No need to |BuildMenu| here.  It is done lazily upon menu access.
+   bookmarkItem.submenu = _bookmarkMenuBridge->BookmarkMenu();
+   bookmarkItem.hidden = hidden;
++  }
+ 
+   _historyMenuBridge = std::make_unique<HistoryMenuBridge>(_lastProfile);
+   _historyMenuBridge->BuildMenu();
+diff --git a/chrome/browser/devtools/chrome_devtools_manager_delegate.cc b/chrome/browser/devtools/chrome_devtools_manager_delegate.cc
+index 34e568267b..e2510d949a 100644
+--- a/chrome/browser/devtools/chrome_devtools_manager_delegate.cc
++++ b/chrome/browser/devtools/chrome_devtools_manager_delegate.cc
+@@ -305,6 +305,23 @@ void ChromeDevToolsManagerDelegate::HandleCommand(
+   it->second->HandleCommand(message, std::move(callback));
+ }
+ 
++namespace {
++
++const char kEmbedderTabKey[] = "embedder_tab";
++
++bool IsEmbedderTab(content::WebContents* web_contents) {
++  return web_contents->GetUserData(kEmbedderTabKey) != nullptr;
++}
++
++}  // namespace
++
++// static
++void ChromeDevToolsManagerDelegate::MarkAsEmbedderTab(
++    content::WebContents* web_contents) {
++  web_contents->SetUserData(kEmbedderTabKey,
++                            std::make_unique<base::SupportsUserData::Data>());
++}
++
+ std::string ChromeDevToolsManagerDelegate::GetTargetType(
+     content::WebContents* web_contents) {
+   if (webui_browser::IsBrowserUIWebContents(web_contents)) {
+@@ -315,7 +332,8 @@ std::string ChromeDevToolsManagerDelegate::GetTargetType(
+     return ChromeDevToolsManagerDelegate::kTypeApp;
+   }
+ 
+-  if (tabs::TabInterface::MaybeGetFromContents(web_contents)) {
++  if (tabs::TabInterface::MaybeGetFromContents(web_contents) ||
++      IsEmbedderTab(web_contents)) {
+     return DevToolsAgentHost::kTypePage;
+   }
+ 
+@@ -342,7 +360,8 @@ std::optional<bool> ChromeDevToolsManagerDelegate::ShouldReportAsTabTarget(
+     return false;
+   }
+ 
+-  if (tabs::TabInterface::MaybeGetFromContents(web_contents)) {
++  if (tabs::TabInterface::MaybeGetFromContents(web_contents) ||
++      IsEmbedderTab(web_contents)) {
+     return true;
+   }
+ 
+diff --git a/chrome/browser/devtools/chrome_devtools_manager_delegate.h b/chrome/browser/devtools/chrome_devtools_manager_delegate.h
+index 5a1fb503d2..264b5ddf29 100644
+--- a/chrome/browser/devtools/chrome_devtools_manager_delegate.h
++++ b/chrome/browser/devtools/chrome_devtools_manager_delegate.h
+@@ -58,6 +58,10 @@ class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate,
+   // Release browser keep alive allowing browser to close.
+   static void AllowBrowserToClose();
+ 
++  // Marks a WebContents that an embedder shows as a browser tab outside of
++  // any TabStripModel, so DevTools treats it as a page.
++  static void MarkAsEmbedderTab(content::WebContents* web_contents);
++
+  private:
+   friend class DevToolsManagerDelegateTest;
+   FRIEND_TEST_ALL_PREFIXES(DevToolsRemoteServerInfobarBrowserTest,
+diff --git a/chrome/browser/devtools/devtools_window.cc b/chrome/browser/devtools/devtools_window.cc
+index e9803277ee..23949a7b0c 100644
+--- a/chrome/browser/devtools/devtools_window.cc
++++ b/chrome/browser/devtools/devtools_window.cc
+@@ -866,6 +866,36 @@ Profile* DevToolsWindow::GetProfileForDevToolsWindow(
+ }
+ 
+ // static
++namespace {
++
++DevToolsWindow::EmbedderDockCallback& EmbedderDockCallbackStorage() {
++  static base::NoDestructor<DevToolsWindow::EmbedderDockCallback> callback;
++  return *callback;
++}
++
++}  // namespace
++
++// static
++const DevToolsWindow::EmbedderDockCallback&
++DevToolsWindow::GetEmbedderDockCallback() {
++  return EmbedderDockCallbackStorage();
++}
++
++// static
++void DevToolsWindow::SetEmbedderDockCallback(EmbedderDockCallback callback) {
++  EmbedderDockCallbackStorage() = std::move(callback);
++}
++
++// static
++void DevToolsWindow::ToggleDevToolsWindowForEmbedder(
++    content::WebContents* inspected_web_contents,
++    const DevToolsToggleAction& action) {
++  ToggleDevToolsWindow(inspected_web_contents, nullptr,
++                       action.type() != DevToolsToggleAction::kToggle, action,
++                       std::string(),
++                       DevToolsOpenedByAction::kMainMenuOrMainShortcut);
++}
++
+ void DevToolsWindow::ToggleDevToolsWindow(
+     content::WebContents* inspected_web_contents,
+     Profile* profile,
+@@ -1059,6 +1089,16 @@ void DevToolsWindow::Show(const DevToolsToggleAction& action) {
+     BrowserWindowInterface* inspected_browser =
+         GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+             inspected_web_contents);
++    if (!inspected_browser && GetEmbedderDockCallback()) {
++      main_web_contents_->SetDelegate(this);
++      main_web_contents_->SetIgnoreZoomGestures(true);
++      GetEmbedderDockCallback().Run(inspected_web_contents);
++      main_web_contents_->SetInitialFocus();
++      PrefsTabHelper::CreateForWebContents(main_web_contents_);
++      OverrideAndSyncDevToolsRendererPrefs();
++      DoAction(action);
++      return;
++    }
+     CHECK(inspected_browser, base::NotFatalUntil::M161);
+ 
+     RegisterModalDialogManager(inspected_browser);
+@@ -1415,7 +1455,9 @@ DevToolsWindow* DevToolsWindow::Create(
+ #endif  // BUILDFLAG(IS_MAC)
+     DevtoolsUIController* devtools_ui_controller =
+         browser ? DevtoolsUIController::From(browser) : nullptr;
+-    if (!devtools_ui_controller || !devtools_ui_controller->CanDockDevtools()) {
++    if ((!devtools_ui_controller ||
++         !devtools_ui_controller->CanDockDevtools()) &&
++        (browser || !GetEmbedderDockCallback())) {
+       can_dock = false;
+     }
+   }
+@@ -1725,7 +1767,8 @@ void DevToolsWindow::ActivateWindow() {
+ #if BUILDFLAG(IS_ANDROID)
+   NOTIMPLEMENTED();
+ #else
+-  if (is_docked_ && GetInspectedBrowserWindow()) {
++  if (is_docked_ &&
++      (GetInspectedBrowserWindow() || GetEmbedderDockCallback())) {
+     main_web_contents_->Focus();
+   } else if (!is_docked_ && browser_ && !browser_->GetWindow()->IsActive()) {
+     browser_->GetWindow()->Activate();
+@@ -2011,10 +2054,12 @@ void DevToolsWindow::ShowCertificateViewer(const std::string& cert_chain) {
+   BrowserWindowInterface* browser =
+       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+           inspected_contents);
+-  if (!browser) {
++  gfx::NativeWindow parent =
++      browser ? browser->GetWindow()->GetNativeWindow()
++              : inspected_contents->GetTopLevelNativeWindow();
++  if (!parent) {
+     return;
+   }
+-  gfx::NativeWindow parent = browser->GetWindow()->GetNativeWindow();
+   ::ShowCertificateViewer(inspected_contents, parent, cert.get());
+ #endif
+ }
+diff --git a/chrome/browser/devtools/devtools_window.h b/chrome/browser/devtools/devtools_window.h
+index b2fd119f42..be8d31b934 100644
+--- a/chrome/browser/devtools/devtools_window.h
++++ b/chrome/browser/devtools/devtools_window.h
+@@ -211,6 +211,16 @@ class DevToolsWindow : public DevToolsUIBindings::Delegate,
+                              int x,
+                              int y);
+ 
++  // Embedders without Browser windows can host docked DevTools themselves.
++  // `callback` runs whenever the docked DevTools for an inspected WebContents
++  // change; the embedder then lays out GetInTabWebContents().
++  using EmbedderDockCallback =
++      base::RepeatingCallback<void(content::WebContents*)>;
++  static void SetEmbedderDockCallback(EmbedderDockCallback callback);
++  static void ToggleDevToolsWindowForEmbedder(
++      content::WebContents* inspected_web_contents,
++      const DevToolsToggleAction& action);
++
+   static void LogDevToolsOpenedByAction(DevToolsOpenedByAction opened_by);
+ 
+   // Logs UKM event when DevTools is opened.
+@@ -435,6 +445,7 @@ class DevToolsWindow : public DevToolsUIBindings::Delegate,
+               content::DevToolsManagerDelegate::DevToolsOptions());
+   static Profile* GetProfileForDevToolsWindow(
+       content::WebContents* web_contents);
++  static const EmbedderDockCallback& GetEmbedderDockCallback();
+ 
+   // content::WebContentsDelegate:
+   void ActivateContents(content::WebContents* contents) override;
+diff --git a/chrome/browser/devtools/devtools_window_views.cc b/chrome/browser/devtools/devtools_window_views.cc
+index 937debfe3f..a0900358a9 100644
+--- a/chrome/browser/devtools/devtools_window_views.cc
++++ b/chrome/browser/devtools/devtools_window_views.cc
+@@ -14,6 +14,7 @@
+ #include "components/web_modal/web_contents_modal_dialog_manager.h"
+ #include "content/public/browser/keyboard_event_processing_result.h"
+ #include "content/public/browser/render_process_host.h"
++#include "content/public/browser/web_contents_delegate.h"
+ #include "printing/buildflags/buildflags.h"
+ 
+ #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
+@@ -95,6 +96,11 @@ bool DevToolsWindow::HandleKeyboardEvent(
+     return true;
+   }
+   BrowserWindow* inspected_window = GetInspectedBrowserWindow();
++  if (!inspected_window && GetEmbedderDockCallback()) {
++    content::WebContents* inspected = GetInspectedWebContents();
++    return inspected && inspected->GetDelegate() &&
++           inspected->GetDelegate()->HandleKeyboardEvent(inspected, event);
++  }
+   return inspected_window && inspected_window->HandleKeyboardEvent(event);
+ }
+ 
+@@ -105,6 +111,13 @@ std::unique_ptr<content::EyeDropper> DevToolsWindow::OpenEyeDropper(
+   if (window) {
+     return window->OpenEyeDropper(render_frame_host, listener);
+   }
++  if (GetEmbedderDockCallback()) {
++    content::WebContents* inspected = GetInspectedWebContents();
++    if (inspected && inspected->GetDelegate()) {
++      return inspected->GetDelegate()->OpenEyeDropper(render_frame_host,
++                                                      listener);
++    }
++  }
+   return nullptr;
+ }
+ 
+@@ -135,6 +148,9 @@ void DevToolsWindow::UpdateBrowserWindow() {
+       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+           inspected_web_contents);
+   if (!inspected_browser) {
++    if (GetEmbedderDockCallback()) {
++      GetEmbedderDockCallback().Run(inspected_web_contents);
++    }
+     return;
+   }
+   if (auto* devtools_ui_controller =
+diff --git a/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm b/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm
+index 10829d1e59..a9cdea0d2b 100644
+--- a/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm
++++ b/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm
+@@ -78,12 +78,15 @@
+   views::Widget* widget = views::Widget::GetTopLevelWidgetForNativeView(
+       source_web_contents_->GetNativeView());
+ 
+-  if (!widget || headless::IsHeadlessMode()) {
++  if (headless::IsHeadlessMode()) {
+     return;
+   }
+ 
++  // Embedders may host web contents in a plain AppKit view with no widget.
+   menu_controller_delegate_ = [[MenuControllerCocoaDelegateImpl alloc]
+-      initWithParams:MenuControllerParamsForWidget(widget)];
++      initWithParams:widget ? MenuControllerParamsForWidget(widget)
++                            : views::MenuControllerParamsForColorProvider(
++                                  &source_web_contents_->GetColorProvider())];
+   menu_controller_ =
+       [[MenuControllerCocoa alloc] initWithModel:&menu_model_
+                                    isContextMenu:YES
+@@ -97,7 +100,9 @@
+ 
+   ui::ShowContextMenu(menu_controller_.menu, clickEvent, parent_view_,
+                       /*allow_nested_tasks=*/true,
+-                      views::ElementTrackerViews::GetContextForWidget(widget));
++                      widget ? views::ElementTrackerViews::GetContextForWidget(
++                                   widget)
++                             : ui::ElementContext());
+ }
+ 
+ void RenderViewContextMenuMacCocoa::CancelToolkitMenu() {
+diff --git a/chrome/browser/ui/extensions/extension_install_ui_desktop.cc b/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
+index fd3290b4f6..8ef85600a8 100644
+--- a/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
++++ b/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
+@@ -8,6 +8,7 @@
+ #include <utility>
+ 
+ #include "base/check.h"
++#include "base/command_line.h"
+ #include "base/functional/bind.h"
+ #include "base/scoped_observation.h"
+ #include "base/strings/utf_string_conversions.h"
+@@ -120,6 +121,12 @@ void ExtensionInstallUIDesktop::OnInstallSuccess(
+     return;
+   }
+ 
++  // The native shell has no Browser windows to host the post-install bubble;
++  // opening one here would spawn a stray Chromium window.
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch("argon-embedder")) {
++    return;
++  }
++
+   if (!profile()) {
+     // TODO(zelidrag): Figure out what exact conditions cause crash
+     // http://crbug.com/40293301 and write browser test to cover it.
+diff --git a/chrome/browser/ui/tab_helpers.h b/chrome/browser/ui/tab_helpers.h
+index c6e05eb620..dc7dd49d07 100644
+--- a/chrome/browser/ui/tab_helpers.h
++++ b/chrome/browser/ui/tab_helpers.h
+@@ -52,8 +52,14 @@ class TabModel;
+ // See
+ // https://chromium.googlesource.com/chromium/src/+/main/docs/chrome_browser_design_principles.md
+ 
++namespace argon_core {
++class ACTabHost;
++}
++
+ class TabHelpers {
+  private:
++  friend class argon_core::ACTabHost;
++
+ #if BUILDFLAG(IS_ANDROID)
+   // ThinWebView is used to host WebContents on non-tab UIs in Android. Most
+   // clients of ThinWebView will need a major subset of the tab helpers.
+diff --git a/chrome/browser/ui/views/profiles/profile_picker_view.cc b/chrome/browser/ui/views/profiles/profile_picker_view.cc
+index bce0ed42f9..3e40de77f8 100644
+--- a/chrome/browser/ui/views/profiles/profile_picker_view.cc
++++ b/chrome/browser/ui/views/profiles/profile_picker_view.cc
+@@ -6,6 +6,7 @@
+ 
+ #include <algorithm>
+ 
++#include "base/command_line.h"
+ #include "base/check_deref.h"
+ #include "base/debug/dump_without_crashing.h"
+ #include "base/feature_list.h"
+@@ -161,6 +162,11 @@ void ClearLockedProfilesFirstBrowserKeepAlive() {
+ 
+ // static
+ void ProfilePicker::Show(Params&& params) {
++  // The Argon native shell keeps one profile per Space and never shows
++  // Chromium's picker.
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch("argon-embedder")) {
++    return;
++  }
+   // Re-open with new params if necessary.
+   if (g_profile_picker_view && g_profile_picker_view->MaybeReopen(params)) {
+     return;
+diff --git a/components/constrained_window/constrained_window_views.cc b/components/constrained_window/constrained_window_views.cc
+index cd235694d9..d9c29fc8a3 100644
+--- a/components/constrained_window/constrained_window_views.cc
++++ b/components/constrained_window/constrained_window_views.cc
+@@ -172,7 +172,9 @@ void UpdateModalDialogPosition(views::Widget* widget,
+   // modal dialogs are displayed as sheets, and their position is managed by a
+   // ConstrainedWindowSheetController instance.
+   if (!host_widget) {
+-    widget->SetSize(size);
++    if (!dialog_host->PlaceDialog(widget->GetNativeWindow(), size)) {
++      widget->SetSize(size);
++    }
+     return;
+   }
+ 
+diff --git a/components/web_modal/modal_dialog_host.cc b/components/web_modal/modal_dialog_host.cc
+index 35f4b8d767..b7129b5528 100644
+--- a/components/web_modal/modal_dialog_host.cc
++++ b/components/web_modal/modal_dialog_host.cc
+@@ -19,4 +19,9 @@ bool ModalDialogHost::ShouldConstrainDialogBoundsByHost() {
+ 
+ void ModalDialogHost::NotifyPositionRequiresUpdate() {}
+ 
++bool ModalDialogHost::PlaceDialog(gfx::NativeWindow dialog,
++                                  const gfx::Size& size) {
++  return false;
++}
++
+ }  // namespace web_modal
+diff --git a/components/web_modal/modal_dialog_host.h b/components/web_modal/modal_dialog_host.h
+index a1410173b8..7149324548 100644
+--- a/components/web_modal/modal_dialog_host.h
++++ b/components/web_modal/modal_dialog_host.h
+@@ -54,6 +54,10 @@ class WEB_MODAL_EXPORT ModalDialogHost {
+ 
+   // Notify observers that the dialog position needs to be updated.
+   virtual void NotifyPositionRequiresUpdate();
++
++  // Lets a host whose view is not inside a views::Widget place `dialog`
++  // itself. Returns false to fall back to only resizing the dialog.
++  virtual bool PlaceDialog(gfx::NativeWindow dialog, const gfx::Size& size);
+ };
+ 
+ }  // namespace web_modal
+diff --git a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc
+index 9905dd3b15..8f848f20f0 100644
+--- a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc
++++ b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc
+@@ -16,7 +16,11 @@ namespace views {
+ 
+ remote_cocoa::mojom::MenuControllerParamsPtr MenuControllerParamsForWidget(
+     Widget* widget) {
+-  auto* color_provider = widget->GetColorProvider();
++  return MenuControllerParamsForColorProvider(widget->GetColorProvider());
++}
++
++remote_cocoa::mojom::MenuControllerParamsPtr
++MenuControllerParamsForColorProvider(const ui::ColorProvider* color_provider) {
+   auto params = remote_cocoa::mojom::MenuControllerParams::New();
+ 
+   // The preferred font is slightly smaller and slightly more bold than the
+diff --git a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h
+index b8bc27787d..5a80e1e6bc 100644
+--- a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h
++++ b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h
+@@ -8,6 +8,10 @@
+ #include "components/remote_cocoa/common/menu.mojom-forward.h"
+ #include "ui/views/views_export.h"
+ 
++namespace ui {
++class ColorProvider;
++}
++
+ namespace views {
+ class Widget;
+ 
+@@ -16,6 +20,10 @@ class Widget;
+ VIEWS_EXPORT remote_cocoa::mojom::MenuControllerParamsPtr
+ MenuControllerParamsForWidget(Widget* widget);
+ 
++// Same as above for menus over views that are not inside a views::Widget.
++VIEWS_EXPORT remote_cocoa::mojom::MenuControllerParamsPtr
++MenuControllerParamsForColorProvider(const ui::ColorProvider* color_provider);
++
+ }  // namespace views
+ 
+ #endif  // UI_VIEWS_CONTROLS_MENU_MENU_CONTROLLER_COCOA_DELEGATE_PARAMS_H_
+diff --git a/ui/views/widget/native_widget_mac.mm b/ui/views/widget/native_widget_mac.mm
+index 02db68344e..0305b2d804 100644
+--- a/ui/views/widget/native_widget_mac.mm
++++ b/ui/views/widget/native_widget_mac.mm
+@@ -598,8 +598,11 @@ void OnDidChangeFocus(View* focused_before, View* focused_now) override {
+   // A peculiarity of the constrained window framework is that it permits a
+   // dialog of ModalType::kWindow to have a null parent window; falling back to
+   // a non-modal window in this case.
++  // Embedders whose web contents live in a plain AppKit view host child-modal
++  // dialogs without a parent widget and position them themselves.
+   DCHECK(ns_window_host_->parent() ||
+-         modal_type == ui::mojom::ModalType::kWindow);
++         modal_type == ui::mojom::ModalType::kWindow ||
++         modal_type == ui::mojom::ModalType::kChild);
+ 
+   // Everything happens upon show.
+ }

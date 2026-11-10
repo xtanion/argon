@@ -113,14 +113,24 @@ diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
 index 37c881f5d2..d6dd1f6443 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -19,3 +19,7 @@
+@@ -19,3 +19,17 @@
  _ChromeAppModeStart_v8
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
 +
 +_ACMain
-+_OBJC_CLASS_$_AC*
-+_OBJC_METACLASS_$_AC*
++_OBJC_CLASS_$_ACApplication
++_OBJC_CLASS_$_ACAutocomplete
++_OBJC_CLASS_$_ACAutocompleteMatch
++_OBJC_CLASS_$_ACDownload
++_OBJC_CLASS_$_ACProfile
++_OBJC_CLASS_$_ACTab
++_OBJC_METACLASS_$_ACApplication
++_OBJC_METACLASS_$_ACAutocomplete
++_OBJC_METACLASS_$_ACAutocompleteMatch
++_OBJC_METACLASS_$_ACDownload
++_OBJC_METACLASS_$_ACProfile
++_OBJC_METACLASS_$_ACTab
 diff --git a/chrome/browser/app_controller_mac.mm b/chrome/browser/app_controller_mac.mm
 index ead883ef95..35a5afaef0 100644
 --- a/chrome/browser/app_controller_mac.mm
@@ -581,3 +591,26 @@ index 02db68344e..0305b2d804 100644
  
    // Everything happens upon show.
  }
+diff --git a/chrome/app/framework.order b/chrome/app/framework.order
+index 6dbc3aeff3..647e89e650 100644
+--- a/chrome/app/framework.order
++++ b/chrome/app/framework.order
+@@ -31,3 +31,18 @@ _ChromeWebAppShortcutCopierMain
+ 
+ # _ChromeMain must be listed last.  That's the whole point of this file.
+ _ChromeMain
++
++# Argon embedder API, exported after the Chrome entry points.
++_ACMain
++_OBJC_CLASS_$_ACApplication
++_OBJC_METACLASS_$_ACApplication
++_OBJC_CLASS_$_ACAutocompleteMatch
++_OBJC_METACLASS_$_ACAutocompleteMatch
++_OBJC_CLASS_$_ACAutocomplete
++_OBJC_METACLASS_$_ACAutocomplete
++_OBJC_CLASS_$_ACDownload
++_OBJC_METACLASS_$_ACDownload
++_OBJC_CLASS_$_ACProfile
++_OBJC_METACLASS_$_ACProfile
++_OBJC_CLASS_$_ACTab
++_OBJC_METACLASS_$_ACTab

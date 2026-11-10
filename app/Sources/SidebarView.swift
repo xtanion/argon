@@ -2562,7 +2562,7 @@ final class FavoriteCellView: HoverView {
 
     override func layout() {
         super.layout()
-        let size: CGFloat = 18
+        let size: CGFloat = 16
         iconView.frame = NSRect(x: (bounds.width - size) / 2, y: (bounds.height - size) / 2, width: size, height: size)
         spinner.frame = iconView.frame
     }
@@ -2751,7 +2751,7 @@ final class DragGhostView: NSView {
 
     override func layout() {
         super.layout()
-        icon.frame = NSRect(x: (bounds.width - 18) / 2, y: (bounds.height - 18) / 2, width: 18, height: 18)
+        icon.frame = NSRect(x: (bounds.width - 16) / 2, y: (bounds.height - 16) / 2, width: 16, height: 16)
     }
 }
 

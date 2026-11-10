@@ -109,6 +109,18 @@ index 6ea55af3da..c8cdb83528 100644
    content::ContentGpuClient* CreateContentGpuClient() override;
    content::ContentRendererClient* CreateContentRendererClient() override;
    content::ContentUtilityClient* CreateContentUtilityClient() override;
+diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
+index 37c881f5d2..d6dd1f6443 100644
+--- a/chrome/app/framework.exports
++++ b/chrome/app/framework.exports
+@@ -19,3 +19,7 @@
+ _ChromeAppModeStart_v8
+ _ChromeMain
+ _ChromeWebAppShortcutCopierMain
++
++_ACMain
++_OBJC_CLASS_$_AC*
++_OBJC_METACLASS_$_AC*
 diff --git a/chrome/browser/app_controller_mac.mm b/chrome/browser/app_controller_mac.mm
 index ead883ef95..35a5afaef0 100644
 --- a/chrome/browser/app_controller_mac.mm

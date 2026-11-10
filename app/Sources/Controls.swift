@@ -69,6 +69,11 @@ final class IconButton: HoverView {
         needsDisplay = true
     }
 
+    func setImage(_ image: NSImage) {
+        imageView.image = image
+        needsDisplay = true
+    }
+
     // Moves the icon into a layer this view owns so it can rotate; AppKit resets a view's own transform.
     func rotateGlyph(to radians: CGFloat, animated: Bool) {
         let glyph = glyphLayer ?? {

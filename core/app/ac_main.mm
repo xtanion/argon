@@ -21,6 +21,8 @@ int ACMain(int argc, char** argv, id<ACApplicationDelegate> delegate) {
   std::vector<const char*> args(argv, argv + argc);
   args.push_back("--no-startup-window");
   args.push_back("--argon-embedder");
+  // Dev builds apply fieldtrial_testing_config, which enables this and adds a menu bar icon.
+  args.push_back("--disable-features=OmniboxEverywhere");
   args.push_back(nullptr);
 
   return ChromeMainWithDelegate(static_cast<int>(args.size() - 1), args.data(),

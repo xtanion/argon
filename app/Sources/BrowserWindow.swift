@@ -300,7 +300,7 @@ final class RootView: NSView {
             needsLayout = true
             return
         }
-        let duration = 0.3 * Double(abs(target - start))
+        let duration = 0.2 * Double(abs(target - start))
         let began = CACurrentMediaTime()
         dockTicker = FrameTicker(view: self) { [weak self] now in
             guard let self else { return false }

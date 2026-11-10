@@ -99,16 +99,8 @@ enum MainMenu {
         }
 
         main.addSubmenu("Spaces") { menu in
-            menu.addItem(withTitle: "Next Space", action: #selector(BrowserWindowController.nextSpace(_:)), keyEquivalent: String(UnicodeScalar(NSRightArrowFunctionKey)!))
-                .keyEquivalentModifierMask = [.command, .option]
-            menu.addItem(withTitle: "Previous Space", action: #selector(BrowserWindowController.previousSpace(_:)), keyEquivalent: String(UnicodeScalar(NSLeftArrowFunctionKey)!))
-                .keyEquivalentModifierMask = [.command, .option]
-            menu.addItem(.separator())
-            for index in 0..<9 {
-                let item = menu.addItem(withTitle: "Space \(index + 1)", action: #selector(BrowserWindowController.selectSpaceFromMenu(_:)), keyEquivalent: "\(index + 1)")
-                item.keyEquivalentModifierMask = [.control]
-                item.tag = index
-            }
+            menu.delegate = SpacesMenu.shared
+            SpacesMenu.shared.menuNeedsUpdate(menu)
         }
 
         main.addSubmenu("Tabs") { menu in
@@ -146,6 +138,95 @@ enum MainMenu {
         }
 
         return main
+    }
+}
+
+@MainActor
+final class SpacesMenu: NSObject, NSMenuDelegate {
+    static let shared = SpacesMenu()
+
+    private var controller: BrowserWindowController? {
+        (NSApp.keyWindow?.windowController ?? NSApp.mainWindow?.windowController ?? NSApp.windows.first { $0.windowController is BrowserWindowController }?.windowController) as? BrowserWindowController
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        menu.addItem(withTitle: "New Space...", action: #selector(BrowserWindowController.newSpace(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Edit Theme...", action: #selector(BrowserWindowController.editActiveSpaceTheme(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Rename Space", action: #selector(BrowserWindowController.renameActiveSpace(_:)), keyEquivalent: "")
+        let profileItem = menu.addItem(withTitle: "Change Profile", action: nil, keyEquivalent: "")
+        profileItem.submenu = profileMenu()
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Next Space", action: #selector(BrowserWindowController.nextSpace(_:)), keyEquivalent: String(UnicodeScalar(NSRightArrowFunctionKey)!))
+            .keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(withTitle: "Previous Space", action: #selector(BrowserWindowController.previousSpace(_:)), keyEquivalent: String(UnicodeScalar(NSLeftArrowFunctionKey)!))
+            .keyEquivalentModifierMask = [.command, .option]
+        guard let (spaces, active) = controller?.spaceList, !spaces.isEmpty else { return }
+        menu.addItem(.separator())
+        for (index, space) in spaces.enumerated() {
+            let item = menu.addItem(withTitle: space.name, action: #selector(BrowserWindowController.selectSpaceFromMenu(_:)), keyEquivalent: index < 9 ? "\(index + 1)" : "")
+            item.keyEquivalentModifierMask = [.control]
+            item.tag = index
+            item.state = index == active ? .on : .off
+            item.attributedTitle = Self.title(for: space)
+        }
+    }
+
+    private func profileMenu() -> NSMenu {
+        let menu = NSMenu()
+        guard let (spaces, active) = controller?.spaceList, spaces.indices.contains(active) else { return menu }
+        var order: [String] = []
+        var names: [String: [String]] = [:]
+        for space in spaces {
+            if names[space.profileIdentifier] == nil { order.append(space.profileIdentifier) }
+            names[space.profileIdentifier, default: []].append(space.name)
+        }
+        let current = spaces[active].profileIdentifier
+        for identifier in order {
+            let item = menu.addItem(withTitle: names[identifier, default: []].joined(separator: ", "), action: #selector(BrowserWindowController.changeActiveSpaceProfile(_:)), keyEquivalent: "")
+            item.representedObject = identifier
+            item.state = identifier == current ? .on : .off
+        }
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "New Profile", action: #selector(BrowserWindowController.changeActiveSpaceProfile(_:)), keyEquivalent: "")
+        return menu
+    }
+
+    // Main-menu items no longer draw their image on current macOS, so the icon rides inside the title.
+    private static func title(for space: Space) -> NSAttributedString {
+        let font = NSFont.menuFont(ofSize: 0)
+        let title = NSMutableAttributedString()
+        if let icon = icon(for: space) {
+            let attachment = NSTextAttachment()
+            attachment.image = icon
+            attachment.bounds = NSRect(x: 0, y: (font.capHeight - icon.size.height) / 2, width: icon.size.width, height: icon.size.height)
+            title.append(NSAttributedString(attachment: attachment))
+            title.append(NSAttributedString(string: "  "))
+        }
+        title.append(NSAttributedString(string: space.name))
+        title.addAttribute(.font, value: font, range: NSRange(location: 0, length: title.length))
+        return title
+    }
+
+    private static func icon(for space: Space) -> NSImage? {
+        let image = space.symbol.isEmpty
+            ? NSImage.symbol("circle.fill", size: 6)
+            : NSImage.symbol(SpaceSymbols.displayName(space.symbol, active: true), size: 13)
+        guard let image else { return nil }
+        let side: CGFloat = 16
+        let framed = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            let size = image.size
+            let scale = min(1, side / max(size.width, size.height))
+            let drawn = NSSize(width: size.width * scale, height: size.height * scale)
+            let target = NSRect(x: rect.midX - drawn.width / 2, y: rect.midY - drawn.height / 2, width: drawn.width, height: drawn.height)
+            image.draw(in: target)
+            if image.isTemplate {
+                NSColor.labelColor.set()
+                target.fill(using: .sourceAtop)
+            }
+            return true
+        }
+        return framed
     }
 }
 

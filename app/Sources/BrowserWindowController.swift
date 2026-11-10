@@ -143,8 +143,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         sidebar.updateToolbar(for: tab)
     }
 
+    // Favorites are shared by every space on the same profile, so the active space wins.
     private func spaceIndex(of tab: BrowserTab) -> Int? {
-        spaces.firstIndex { space in space.allTabs.contains { $0 === tab } }
+        if activeSpace.allTabs.contains(where: { $0 === tab }) { return activeIndex }
+        return spaces.firstIndex { space in space.allTabs.contains { $0 === tab } }
     }
 
     private func refreshSidebar(animated: Bool = false) {
@@ -263,7 +265,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
                 if index == self.activeIndex {
                     self.switchToSpace(index == 0 ? 1 : index - 1)
                 }
-                space.allTabs.forEach { $0.close() }
+                let sharesProfile = self.spaces.contains { $0 !== space && $0.profileIdentifier == space.profileIdentifier }
+                (sharesProfile ? space.pinnedTabs + space.tabs : space.allTabs).forEach { $0.close() }
                 self.spaces.remove(at: index)
                 if self.activeIndex > index { self.activeIndex -= 1 }
                 self.root.setFrameColor(self.activeSpace.frameColor)
@@ -315,7 +318,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     func pin(_ tab: BrowserTab, in folder: SidebarFolder? = nil) {
         guard let index = spaceIndex(of: tab) else { return }
         let space = spaces[index]
-        if tab.isPinned {
+        if space.removeFavorite(tab) {
+        } else if tab.isPinned {
             space.removeFromPinned(tab)
         } else {
             space.tabs.removeAll { $0 === tab }
@@ -337,6 +341,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         var todayIndex: Int?
         if let source {
             space.removePinned(parent: source.parent, index: source.index)
+        } else if case .tab(let tab) = item, space.removeFavorite(tab) {
         } else if case .tab(let tab) = item, let index = space.tabs.firstIndex(where: { $0 === tab }) {
             space.tabs.remove(at: index)
             todayIndex = index
@@ -368,7 +373,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     func unpin(_ tab: BrowserTab) {
         guard let index = spaceIndex(of: tab), tab.isPinned else { return }
         let space = spaces[index]
-        space.removeFromPinned(tab)
+        if !space.removeFavorite(tab) { space.removeFromPinned(tab) }
         tab.unpin()
         if tab.isLoaded {
             space.tabs.insert(tab, at: 0)
@@ -376,6 +381,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             if space.activeTab === tab { space.activeTab = nil }
             tab.close()
         }
+        refreshSidebar(animated: true)
+        scheduleSave()
+    }
+
+    func addFavorite(_ tab: BrowserTab, at index: Int = .max) {
+        guard let spaceIndex = spaceIndex(of: tab) else { return }
+        let space = spaces[spaceIndex]
+        if space.removeFavorite(tab) {
+        } else if tab.isPinned {
+            space.removeFromPinned(tab)
+        } else {
+            space.tabs.removeAll { $0 === tab }
+            tab.pin()
+        }
+        var favorites = space.favorites
+        favorites.insert(tab, at: min(max(0, index), favorites.count))
+        space.favorites = favorites
         refreshSidebar(animated: true)
         scheduleSave()
     }
@@ -513,7 +535,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     }
 
     func tabsInRecentOrder() -> [(tab: BrowserTab, space: Space)] {
-        spaces.flatMap { space in space.allTabs.map { (tab: $0, space: space) } }
+        var seen = Set<ObjectIdentifier>()
+        return spaces.flatMap { space in space.allTabs.map { (tab: $0, space: space) } }
+            .filter { seen.insert(ObjectIdentifier($0.tab)).inserted }
             .sorted { $0.tab.lastActive > $1.tab.lastActive }
     }
 
@@ -613,6 +637,52 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     @objc func showExtensions(_ sender: Any?) { openChromePage("extensions") }
     @objc func clearBrowsingData(_ sender: Any?) { openChromePage("settings", path: "/clearBrowserData") }
     @objc func toggleDownloads(_ sender: Any?) { sidebar.toggleDownloads() }
+    @objc func showSiteControls(_ sender: Any?) { sidebar.toggleSiteControls() }
+
+    func openExtensionStore() {
+        openTab(URL(string: "https://chromewebstore.google.com"))
+    }
+
+    func openSiteSettings() {
+        guard let url = activeTab?.url, let scheme = url.scheme, let host = url.host else {
+            openChromePage("settings", path: "/content")
+            return
+        }
+        let origin = "\(scheme)://\(host)" + (url.port.map { ":\($0)" } ?? "")
+        let encoded = origin.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? origin
+        openChromePage("settings", path: "/content/siteDetails?site=\(encoded)")
+    }
+
+    func captureScreenshot() {
+        guard let browserTab = activeTab, let page = browserTab.tab else { return }
+        guard page.responds(to: #selector(Tab.captureVisibleContent(completion:))) else {
+            root.showToast("Capture needs a newer ArgonCore build", icon: "exclamationmark.circle")
+            return
+        }
+        page.captureVisibleContent { [weak self] image in
+            guard let self else { return }
+            guard let image, let tiff = image.tiffRepresentation,
+                  let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else {
+                self.root.showToast("Couldn't Capture Page", icon: "exclamationmark.circle")
+                return
+            }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.writeObjects([image])
+            let name = (browserTab.url?.displayHost ?? "Page") + " " + Self.timestamp() + ".png"
+            self.root.showToast("Copied Screenshot", icon: "camera", action: ToastAction(symbol: "square.and.arrow.down", toolTip: "Save to Downloads") { _ in
+                guard let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
+                let file = folder.appendingPathComponent(name)
+                guard (try? png.write(to: file)) != nil else { return }
+                NSWorkspace.shared.activateFileViewerSelecting([file])
+            }, duration: 4)
+        }
+    }
+
+    private static func timestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return formatter.string(from: Date())
+    }
 
     private func openChromePage(_ host: String, path: String = "") {
         if let existing = activeSpace.allTabs.first(where: { $0.url?.scheme == "chrome" && $0.url?.host == host }) {
@@ -712,6 +782,39 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     }
 
     @objc func nextSpace(_ sender: Any?) { switchSpace(by: 1) }
+    @objc func renameActiveSpace(_ sender: Any?) { renameSpace(activeIndex) }
+    @objc func editActiveSpaceTheme(_ sender: Any?) {
+        showThemeEditor(forSpace: activeIndex, relativeTo: sidebar.spaceAnchor(activeIndex))
+    }
+    @objc func changeActiveSpaceProfile(_ sender: NSMenuItem) {
+        changeProfile(of: activeSpace, to: sender.representedObject as? String)
+    }
+
+    var spaceList: (spaces: [Space], active: Int) { (spaces, activeIndex) }
+
+    // Pages are rebuilt in the new profile, so each tab reloads with that profile's cookies and logins.
+    func changeProfile(of space: Space, to identifier: String?) {
+        let target = identifier ?? "Space " + UUID().uuidString.prefix(8)
+        guard target != space.profileIdentifier else { return }
+        Application.shared.loadProfile(identifier: target) { [weak self] profile in
+            guard let self, let profile, let index = self.spaces.firstIndex(where: { $0 === space }) else { return }
+            let isActive = index == self.activeIndex
+            if isActive {
+                self.displayedTab?.tab?.isVisible = false
+                self.displayedTab = nil
+                self.root.card.show(nil)
+            }
+            let sharesProfile = self.spaces.contains { $0 !== space && $0.profileIdentifier == space.profileIdentifier }
+            (sharesProfile ? space.pinnedTabs + space.tabs : space.allTabs).forEach { $0.suspend() }
+            space.profileIdentifier = target
+            space.profile = profile
+            space.favorites.forEach { $0.observer = self }
+            if let active = space.activeTab, !space.allTabs.contains(where: { $0 === active }) { space.activeTab = nil }
+            if isActive { self.showActiveTab() }
+            self.refreshSidebar()
+            self.scheduleSave()
+        }
+    }
     @objc func previousSpace(_ sender: Any?) { switchSpace(by: -1) }
 
     // MARK: Sidebar resizing
@@ -846,7 +949,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
                     pinnedCollapsed: space.pinnedCollapsed
                 )
             },
-            activeSpace: activeIndex
+            activeSpace: activeIndex,
+            favorites: FavoritesStore.shared.all.mapValues { tabs in
+                tabs.compactMap { tab in
+                    guard let url = tab.pinnedURL ?? tab.url else { return nil }
+                    return SavedState.SavedTab(url: url.absoluteString, title: tab.pinnedTitle.isEmpty ? tab.title : tab.pinnedTitle,
+                                               favicon: tab.favicon?.faviconData)
+                }
+            }
         )
         state.save()
     }

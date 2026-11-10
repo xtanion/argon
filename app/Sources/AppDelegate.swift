@@ -6,6 +6,11 @@ final class AppDelegate: NSObject, ApplicationDelegate {
 
     func applicationDidStart(_ application: Application) {
         let state = SavedState.load()
+        for (profile, saved) in state.favorites ?? [:] {
+            FavoritesStore.shared[profile] = saved.compactMap { saved in
+                URL(string: saved.url).map { BrowserTab(pinnedURL: $0, title: saved.title, favicon: .favicon(fromData: saved.favicon)) }
+            }
+        }
         let spaces = state.spaces.map { saved in
             let space = Space(name: saved.name, symbol: saved.symbol, hue: saved.hue, profileIdentifier: saved.profile)
             space.intensity = saved.intensity ?? Palette.defaultIntensity
@@ -17,7 +22,7 @@ final class AppDelegate: NSObject, ApplicationDelegate {
                 tab.cachedFavicon = .favicon(fromData: saved.favicon)
                 return tab
             }
-            let ordered = space.allTabs
+            let ordered = space.pinnedTabs + space.tabs
             if let active = saved.active, ordered.indices.contains(active) {
                 space.activeTab = ordered[active]
             }

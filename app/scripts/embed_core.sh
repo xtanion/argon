@@ -14,6 +14,6 @@ rsync -a --delete "$src" "$dst/"
 
 # Component builds: helpers find their dylibs relative to the app's parent
 # directory, as Chromium.app does inside the out directory.
-for lib in "${ARGON_CORE_OUT}"/*.dylib; do
+for lib in "${ARGON_CORE_OUT}"/*.dylib(N); do
   ln -sfn "$lib" "${TARGET_BUILD_DIR}/$(basename "$lib")"
 done

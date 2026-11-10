@@ -5,6 +5,7 @@
 #import "argon_core/browser/ac_internal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 
 #include "base/strings/sys_string_conversions.h"
@@ -13,7 +14,12 @@
 #include "components/find_in_page/find_tab_helper.h"
 #include "components/find_in_page/find_types.h"
 #include "components/zoom/page_zoom.h"
+#include "content/public/browser/host_zoom_map.h"
 #include "content/public/browser/reload_type.h"
+#include "components/viz/common/frame_sinks/copy_output_result.h"
+#include "content/public/browser/render_widget_host_view.h"
+#include "skia/ext/skia_utils_mac.h"
+#include "third_party/blink/public/common/page/page_zoom.h"
 #include "content/public/common/page_zoom.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/web_contents.h"
@@ -145,6 +151,36 @@ ACTabOpenDisposition ToDisposition(WindowOpenDisposition disposition) {
 
 - (void)resetZoom {
   zoom::PageZoom::Zoom(self.webContents, content::PAGE_ZOOM_RESET);
+}
+
+- (NSInteger)zoomPercent {
+  double level = content::HostZoomMap::GetZoomLevel(self.webContents);
+  return std::lround(blink::ZoomLevelToZoomFactor(level) * 100);
+}
+
+- (void)captureVisibleContentWithCompletion:(void (^)(NSImage*))completion {
+  void (^callback)(NSImage*) = [completion copy];
+  content::RenderWidgetHostView* view =
+      self.webContents->GetRenderWidgetHostView();
+  if (!view || !view->IsSurfaceAvailableForCopy()) {
+    callback(nil);
+    return;
+  }
+  // The copy can finish on another sequence, so the result hops back to main.
+  view->CopyFromSurface(
+      gfx::Rect(), gfx::Size(), base::Seconds(5),
+      base::BindOnce(
+          [](void (^callback)(NSImage*),
+             const content::CopyFromSurfaceResult& result) {
+            NSImage* image = nil;
+            if (result.has_value() && !result->bitmap.drawsNothing()) {
+              image = skia::SkBitmapToNSImage(result->bitmap);
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+              callback(image);
+            });
+          },
+          callback));
 }
 
 - (void)print {

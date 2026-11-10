@@ -88,6 +88,14 @@ NS_SWIFT_NAME(Tab)
 - (void)zoomIn;
 - (void)zoomOut;
 - (void)resetZoom;
+// The page zoom as a percentage; 100 is the default size.
+@property(readonly) NSInteger zoomPercent;
+
+// A snapshot of the visible page at full resolution, delivered on the main
+// thread. nil when the page has nothing to copy yet.
+- (void)captureVisibleContentWithCompletion:
+    (void (^)(NSImage* _Nullable image))completion
+    NS_SWIFT_NAME(captureVisibleContent(completion:));
 
 // Chrome's print preview, shown over the page.
 - (void)print;

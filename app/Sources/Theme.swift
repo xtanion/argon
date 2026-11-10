@@ -17,7 +17,8 @@ enum Metrics {
     static let toolbarButtonPitch: CGFloat = 34
     static let iconFrame: CGFloat = 24
     static let faviconSize: CGFloat = 16
-    static let spaceBarHeight: CGFloat = 40
+    static let spaceBarHeight: CGFloat = 44
+    static let spaceBarBottomInset: CGFloat = 10
     static let spaceButtonSize: CGFloat = 28
     static let spaceButtonGap: CGFloat = 6
     static let spaceIconSize: CGFloat = 13
@@ -58,6 +59,27 @@ enum Palette {
     static let subtle = white(0x8A)
     static let faint = white(0x66)
     static let hairline = white(0x24)
+    static let favorite = dynamic(dark: NSColor(white: 1, alpha: 0.09)) {
+        frameIsVeryLight ? NSColor(white: 0, alpha: 0.05) : NSColor(white: 1, alpha: 0.45)
+    }
+    static let favoriteHover = dynamic(dark: NSColor(white: 1, alpha: 0.14)) {
+        frameIsVeryLight ? NSColor(white: 0, alpha: 0.08) : NSColor(white: 1, alpha: 0.65)
+    }
+    static let favoriteActive = dynamic(dark: NSColor(white: 1, alpha: 0.14)) {
+        frameIsVeryLight ? NSColor(white: 0, alpha: 0.1) : NSColor(white: 1, alpha: 0.85)
+    }
+    static let favoriteActiveBorder = dynamic(dark: NSColor(white: 1, alpha: 0.32)) {
+        frameIsVeryLight ? NSColor(white: 0, alpha: 0.16) : NSColor(white: 1, alpha: 1)
+    }
+
+    static func favoriteActive(accent: NSColor) -> NSColor {
+        let soft = NSColor.white.blended(withFraction: 0.3, of: accent) ?? accent
+        return dynamic(dark: soft.withAlphaComponent(0.13)) { soft.withAlphaComponent(0.6) }
+    }
+
+    static func favoriteActiveBorder(accent: NSColor) -> NSColor {
+        dynamic(dark: accent.withAlphaComponent(0.55)) { accent.withAlphaComponent(0.45) }
+    }
     static let placeholder = dynamic(dark: NSColor(white: 1, alpha: CGFloat(0x2A) / 255)) { NSColor(white: 0, alpha: CGFloat(0x0F) / 255) }
 
     static let defaultIntensity = 0.3
@@ -338,5 +360,36 @@ final class FrameTicker: NSObject {
         displayLink = nil
         timer?.invalidate()
         timer = nil
+    }
+}
+
+extension NSImage {
+    // The most saturated hue in the image, toned to work as a highlight; nil for monochrome icons.
+    var accentColor: NSColor? {
+        let side = 16
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+        NSGraphicsContext.restoreGraphicsState()
+        var x = 0.0, y = 0.0, weight = 0.0, saturation = 0.0
+        for py in 0..<side {
+            for px in 0..<side {
+                guard let color = rep.colorAt(x: px, y: py), color.alphaComponent > 0.5 else { continue }
+                let s = color.saturationComponent, b = color.brightnessComponent
+                guard s > 0.25, b > 0.25 else { continue }
+                let w = s * b
+                let angle = color.hueComponent * 2 * .pi
+                x += cos(angle) * w
+                y += sin(angle) * w
+                saturation += s * w
+                weight += w
+            }
+        }
+        guard weight > 4 else { return nil }
+        var hue = atan2(y, x) / (2 * .pi)
+        if hue < 0 { hue += 1 }
+        return NSColor(hue: hue, saturation: min(max(saturation / weight, 0.45), 0.6), brightness: 0.92, alpha: 1)
     }
 }

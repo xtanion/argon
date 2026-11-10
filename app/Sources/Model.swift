@@ -62,6 +62,14 @@ final class BrowserTab: NSObject, TabDelegate {
         tab = nil
     }
 
+    func suspend() {
+        savedURL = url
+        savedTitle = title
+        tab?.delegate = nil
+        tab?.close()
+        tab = nil
+    }
+
     func returnToPinnedURL() {
         guard let pinnedURL else { return }
         tab?.load(pinnedURL)
@@ -182,13 +190,24 @@ enum SidebarDrop {
 }
 
 @MainActor
+final class FavoritesStore {
+    static let shared = FavoritesStore()
+    private(set) var all: [String: [BrowserTab]] = [:]
+
+    subscript(profile: String) -> [BrowserTab] {
+        get { all[profile] ?? [] }
+        set { all[profile] = newValue.isEmpty ? nil : newValue }
+    }
+}
+
+@MainActor
 final class Space {
     var name: String
     var symbol: String
     var hue: Double
     var intensity = Palette.defaultIntensity
     var customColor: NSColor?
-    let profileIdentifier: String
+    var profileIdentifier: String
     var profile: Profile? {
         didSet { if let profile { DownloadCenter.shared.track(profile) } }
     }
@@ -197,8 +216,23 @@ final class Space {
     var tabs: [BrowserTab] = []
     var activeTab: BrowserTab?
 
+    // Favorites belong to the profile, so spaces sharing a profile share them.
+    var favorites: [BrowserTab] {
+        get { FavoritesStore.shared[profileIdentifier] }
+        set { FavoritesStore.shared[profileIdentifier] = newValue }
+    }
+
     var pinnedTabs: [BrowserTab] { pinned.flatMap(\.tabs) }
-    var allTabs: [BrowserTab] { pinnedTabs + tabs }
+    var allTabs: [BrowserTab] { favorites + pinnedTabs + tabs }
+
+    func isFavorite(_ tab: BrowserTab) -> Bool { favorites.contains { $0 === tab } }
+
+    @discardableResult
+    func removeFavorite(_ tab: BrowserTab) -> Bool {
+        guard let index = favorites.firstIndex(where: { $0 === tab }) else { return false }
+        favorites.remove(at: index)
+        return true
+    }
 
     // Tabs in sidebar order, skipping those inside collapsed folders.
     var visibleTabs: [BrowserTab] {
@@ -210,7 +244,7 @@ final class Space {
                 }
             }
         }
-        return walk(pinned) + tabs
+        return favorites + walk(pinned) + tabs
     }
 
     var folders: [(folder: SidebarFolder, depth: Int)] {
@@ -323,6 +357,7 @@ struct SavedState: Codable {
 
     var spaces: [SavedSpace]
     var activeSpace: Int
+    var favorites: [String: [SavedTab]]? = nil
 
     private static let key = "ArgonBrowserState"
 

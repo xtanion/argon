@@ -116,6 +116,19 @@ void InterceptOpenURLs() {
       KeepAliveOrigin::APP_CONTROLLER, KeepAliveRestartOption::DISABLED);
   DisableProfilePicker();
   InterceptReopen();
+  // Chromium posts this once quitting is decided; the main loop only exits
+  // after every keep-alive is gone, so holding ours past it hangs the quit.
+  __weak ACApplication* weakSelf = self;
+  [NSNotificationCenter.defaultCenter
+      addObserverForName:NSApplicationWillTerminateNotification
+                  object:nil
+                   queue:nil
+              usingBlock:^(NSNotification*) {
+                ACApplication* strongSelf = weakSelf;
+                if (strongSelf) {
+                  strongSelf->_keepAlive.reset();
+                }
+              }];
 }
 
 - (void)shutDown {

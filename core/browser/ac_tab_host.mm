@@ -24,6 +24,7 @@
 #include "components/javascript_dialogs/app_modal_dialog_manager.h"
 #include "content/public/browser/eye_dropper.h"
 #include "content/public/browser/file_select_listener.h"
+#include "content/public/browser/keyboard_event_processing_result.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/ui/tab_helpers.h"
@@ -352,6 +353,31 @@ void ACTabHost::OnFaviconUpdated(favicon::FaviconDriver* favicon_driver,
   if (notification_icon_type == NON_TOUCH_16_DIP) {
     [owner_ hostFaviconChanged];
   }
+}
+
+// Pages may swallow any shortcut, so the ones Chrome reserves for the browser
+// (quit, close, new tab, new window) skip the renderer.
+content::KeyboardEventProcessingResult ACTabHost::PreHandleKeyboardEvent(
+    content::WebContents* source,
+    const input::NativeWebKeyboardEvent& event) {
+  NSEvent* ns_event = event.os_event.Get();
+  if (ns_event.type != NSEventTypeKeyDown) {
+    return content::KeyboardEventProcessingResult::NOT_HANDLED;
+  }
+  NSEventModifierFlags flags = ns_event.modifierFlags &
+                               NSEventModifierFlagDeviceIndependentFlagsMask;
+  if (!(flags & NSEventModifierFlagCommand) ||
+      (flags & (NSEventModifierFlagControl | NSEventModifierFlagOption))) {
+    return content::KeyboardEventProcessingResult::NOT_HANDLED;
+  }
+  NSString* key = ns_event.charactersIgnoringModifiers.lowercaseString;
+  static NSSet<NSString*>* reserved = [NSSet setWithArray:@[ @"q", @"w", @"t", @"n" ]];
+  if (![reserved containsObject:key]) {
+    return content::KeyboardEventProcessingResult::NOT_HANDLED;
+  }
+  return [NSApp.mainMenu performKeyEquivalent:ns_event]
+             ? content::KeyboardEventProcessingResult::HANDLED
+             : content::KeyboardEventProcessingResult::NOT_HANDLED;
 }
 
 // Shortcuts the page did not consume go to the app's menu, as in content_shell.

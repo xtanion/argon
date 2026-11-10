@@ -104,6 +104,9 @@ class ACTabHost : public content::WebContentsDelegate,
       const blink::mojom::FullscreenOptions& options) override;
   void ExitFullscreenModeForTab(content::WebContents* source) override;
   bool IsFullscreenForTabOrPending(const content::WebContents* source) override;
+  content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
+      content::WebContents* source,
+      const input::NativeWebKeyboardEvent& event) override;
   bool HandleKeyboardEvent(content::WebContents* source,
                            const input::NativeWebKeyboardEvent& event) override;
   void RequestMediaAccessPermission(

@@ -13,6 +13,7 @@
 
 int ACMain(int argc, char** argv, id<ACApplicationDelegate> delegate) {
   argon_core::SetApplicationDelegate(delegate);
+  argon_core::InterceptOpenURLs();
 
   argon_core::ACMainDelegate main_delegate(
       {.exe_entry_point_ticks = base::TimeTicks::Now()});

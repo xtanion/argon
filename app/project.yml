@@ -27,8 +27,8 @@ targets:
       properties:
         CFBundleName: Argon
         CFBundleDisplayName: Argon
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.2.0"
+        CFBundleVersion: "2"
         NSPrincipalClass: BrowserCrApplication
         LSMinimumSystemVersion: "13.0"
         NSSupportsAutomaticGraphicsSwitching: true
@@ -43,6 +43,15 @@ targets:
         NSContactsUsageDescription: "Once Argon has access, websites will be able to ask you for access."
         NSLocalNetworkUsageDescription: "Once Argon has access, websites will be able to ask you for access."
         NSScreenCaptureUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        CFBundleURLTypes:
+          - CFBundleURLName: Web site URL
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [http, https]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: HTML document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Default
+            LSItemContentTypes: [public.html, public.xhtml]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.argon.browser

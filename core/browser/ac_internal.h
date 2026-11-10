@@ -18,6 +18,8 @@ class WebContents;
 namespace argon_core {
 
 void SetApplicationDelegate(id<ACApplicationDelegate> delegate);
+// Routes links macOS asks Argon to open to the delegate instead of Chromium.
+void InterceptOpenURLs();
 id<ACApplicationDelegate> GetApplicationDelegate();
 
 // Called from the browser main parts once Chrome's services are up.

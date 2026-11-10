@@ -4,7 +4,13 @@ An Arc-style browser for macOS. A native Swift + AppKit app owns the whole
 interface: sidebar, spaces, command bar and page card. Chromium supplies the
 engine and Chrome's back-end services.
 
-## Why
+## Why Argon?
+
+> Arc's sunsetting made me sad, and it was time to switch. I gave every other
+> browser a shot, but each one was either too heavy, too slow, not
+> Chromium-based, or filled with AI slop. So I decided to build my own.
+
+## Why a native app on Chromium
 
 Chromium's window layer ties each window to one profile. Arc-style spaces need
 tabs from several profiles in one window, and a native-feeling interface keeps

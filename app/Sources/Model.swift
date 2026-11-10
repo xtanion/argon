@@ -7,6 +7,7 @@ protocol BrowserTabObserver: AnyObject {
     func browserTabDidRequestClose(_ tab: BrowserTab)
     func browserTab(_ tab: BrowserTab, didRequestFullscreen fullscreen: Bool)
     func browserTab(_ tab: BrowserTab, didUpdateFindMatches matches: Int, activeMatch: Int)
+    func browserTabDidChangeMedia(_ tab: BrowserTab)
 }
 
 // A sidebar tab. The web page is created lazily, so restored tabs cost nothing
@@ -18,6 +19,7 @@ final class BrowserTab: NSObject, TabDelegate {
     private var savedTitle: String
     weak var observer: BrowserTabObserver?
     var lastActive = Date.distantPast
+    var autoEnteredPictureInPicture = false
     private(set) var pinnedURL: URL?
     private(set) var pinnedTitle = ""
     var cachedFavicon: NSImage?
@@ -126,6 +128,8 @@ final class BrowserTab: NSObject, TabDelegate {
     }
 
     func tabDidRequestClose(_ tab: Tab) { observer?.browserTabDidRequestClose(self) }
+
+    func tabDidChangeMedia(_ tab: Tab) { observer?.browserTabDidChangeMedia(self) }
 
     func tab(_ tab: Tab, didRequestFullscreen fullscreen: Bool) {
         observer?.browserTab(self, didRequestFullscreen: fullscreen)

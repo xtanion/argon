@@ -9,7 +9,10 @@
 #include <memory>
 
 #include "base/strings/sys_string_conversions.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/printing/print_view_manager_common.h"
+#include "chrome/browser/profiles/profile.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/find_in_page/find_tab_helper.h"
 #include "components/find_in_page/find_types.h"
@@ -21,6 +24,7 @@
 #include "skia/ext/skia_utils_mac.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "content/public/common/page_zoom.h"
+#include "content/public/browser/media_session.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/web_contents.h"
 #include "argon_core/browser/ac_tab_host.h"
@@ -153,6 +157,114 @@ ACTabOpenDisposition ToDisposition(WindowOpenDisposition disposition) {
   zoom::PageZoom::Zoom(self.webContents, content::PAGE_ZOOM_RESET);
 }
 
+- (BOOL)hasMedia {
+  return _host->media().active;
+}
+
+- (BOOL)isPlayingMedia {
+  return _host->media().playing;
+}
+
+- (BOOL)isAudible {
+  return self.webContents->IsCurrentlyAudible();
+}
+
+- (BOOL)isMuted {
+  return self.webContents->IsAudioMuted();
+}
+
+- (void)setMuted:(BOOL)muted {
+  self.webContents->SetAudioMuted(muted);
+  [self hostMediaChanged];
+}
+
+- (NSString*)mediaTitle {
+  return base::SysUTF16ToNSString(_host->media().title);
+}
+
+- (BOOL)canPlayPreviousTrack {
+  return _host->media().can_previous;
+}
+
+- (BOOL)canPlayNextTrack {
+  return _host->media().can_next;
+}
+
+- (BOOL)canEnterPictureInPicture {
+  return _host->media().can_picture_in_picture;
+}
+
+- (BOOL)isInPictureInPicture {
+  return _host->media().in_picture_in_picture;
+}
+
+- (void)playMedia {
+  content::MediaSession::Get(self.webContents)
+      ->Resume(content::MediaSession::SuspendType::kUI);
+}
+
+- (void)pauseMedia {
+  content::MediaSession::Get(self.webContents)
+      ->Suspend(content::MediaSession::SuspendType::kUI);
+}
+
+- (void)previousTrack {
+  content::MediaSession::Get(self.webContents)->PreviousTrack();
+}
+
+- (void)nextTrack {
+  content::MediaSession::Get(self.webContents)->NextTrack();
+}
+
+- (HostContentSettingsMap*)contentSettingsForURL:(GURL*)url {
+  content::WebContents* contents = self.webContents;
+  if (!contents) {
+    return nullptr;
+  }
+  *url = contents->GetLastCommittedURL();
+  if (!url->SchemeIsHTTPOrHTTPS()) {
+    return nullptr;
+  }
+  return HostContentSettingsMapFactory::GetForProfile(
+      Profile::FromBrowserContext(contents->GetBrowserContext()));
+}
+
+- (BOOL)autoPictureInPictureAllowed {
+  GURL url;
+  HostContentSettingsMap* map = [self contentSettingsForURL:&url];
+  if (!map) {
+    return NO;
+  }
+  return map->GetContentSetting(url, url,
+                                ContentSettingsType::AUTO_PICTURE_IN_PICTURE) !=
+         CONTENT_SETTING_BLOCK;
+}
+
+- (void)setAutoPictureInPictureAllowed:(BOOL)allowed {
+  GURL url;
+  HostContentSettingsMap* map = [self contentSettingsForURL:&url];
+  if (!map) {
+    return;
+  }
+  map->SetContentSettingDefaultScope(
+      url, url, ContentSettingsType::AUTO_PICTURE_IN_PICTURE,
+      allowed ? CONTENT_SETTING_ALLOW : CONTENT_SETTING_BLOCK);
+}
+
+- (void)togglePictureInPicture {
+  auto* session = content::MediaSession::Get(self.webContents);
+  if (_host->media().in_picture_in_picture) {
+    session->ExitPictureInPicture();
+  } else {
+    session->EnterPictureInPicture();
+  }
+}
+
+- (void)stopMedia {
+  content::MediaSession::Get(self.webContents)
+      ->Stop(content::MediaSession::SuspendType::kUI);
+}
+
 - (NSInteger)zoomPercent {
   double level = content::HostZoomMap::GetZoomLevel(self.webContents);
   return std::lround(blink::ZoomLevelToZoomFactor(level) * 100);
@@ -280,6 +392,13 @@ ACTabOpenDisposition ToDisposition(WindowOpenDisposition disposition) {
   }
   if ([delegate respondsToSelector:@selector(tabDidChangeNavigationState:)]) {
     [delegate tabDidChangeNavigationState:self];
+  }
+}
+
+- (void)hostMediaChanged {
+  id<ACTabDelegate> delegate = self.delegate;
+  if ([delegate respondsToSelector:@selector(tabDidChangeMedia:)]) {
+    [delegate tabDidChangeMedia:self];
   }
 }
 

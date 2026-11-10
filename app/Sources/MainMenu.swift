@@ -13,7 +13,7 @@ enum MainMenu {
                 .keyEquivalentModifierMask = [.command, .option]
             menu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
             menu.addItem(.separator())
-            menu.addItem(ClosureMenuItem("Quit Argon") { Application.shared.quit() }.withKey("q"))
+            menu.addItem(ClosureMenuItem("Quit Argon") { QuitGuard.requestQuit() }.withKey("q"))
         }
 
         main.addSubmenu("File") { menu in

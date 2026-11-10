@@ -18,6 +18,8 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "services/media_session/public/mojom/media_session.mojom.h"
 
 @class NSObject;
 @class NSView;
@@ -32,8 +34,19 @@ class ACTabHost : public content::WebContentsDelegate,
                   public favicon::FaviconDriverObserver,
                   public find_in_page::FindResultObserver,
                   public web_modal::WebContentsModalDialogManagerDelegate,
-                  public web_modal::WebContentsModalDialogHost {
+                  public web_modal::WebContentsModalDialogHost,
+                  public media_session::mojom::MediaSessionObserver {
  public:
+  struct MediaState {
+    bool active = false;
+    bool playing = false;
+    bool can_previous = false;
+    bool can_next = false;
+    bool can_picture_in_picture = false;
+    bool in_picture_in_picture = false;
+    std::u16string title;
+  };
+
   ACTabHost(ACTab* owner, std::unique_ptr<content::WebContents> contents);
   ACTabHost(const ACTabHost&) = delete;
   ACTabHost& operator=(const ACTabHost&) = delete;
@@ -47,6 +60,22 @@ class ACTabHost : public content::WebContentsDelegate,
   void ToggleDevTools();
   enum class DevToolsPanel { kConsole, kInspect };
   void ShowDevTools(DevToolsPanel panel);
+  const MediaState& media() const { return media_; }
+
+  // media_session::mojom::MediaSessionObserver:
+  void MediaSessionInfoChanged(
+      media_session::mojom::MediaSessionInfoPtr info) override;
+  void MediaSessionMetadataChanged(
+      const std::optional<media_session::MediaMetadata>& metadata) override;
+  void MediaSessionActionsChanged(
+      const std::vector<media_session::mojom::MediaSessionAction>& actions)
+      override;
+  void MediaSessionImagesChanged(
+      const base::flat_map<media_session::mojom::MediaSessionImageType,
+                           std::vector<media_session::MediaImage>>& images)
+      override;
+  void MediaSessionPositionChanged(
+      const std::optional<media_session::MediaPosition>& position) override;
 
   // find_in_page::FindResultObserver:
   void OnFindResultAvailable(content::WebContents* web_contents) override;
@@ -95,6 +124,9 @@ class ACTabHost : public content::WebContentsDelegate,
   std::unique_ptr<content::EyeDropper> OpenEyeDropper(
       content::RenderFrameHost* frame,
       content::EyeDropperListener* listener) override;
+  content::PictureInPictureResult EnterPictureInPicture(
+      content::WebContents* web_contents) override;
+  void ExitPictureInPicture() override;
 
   // content::WebContentsObserver:
   void LoadProgressChanged(double progress) override;
@@ -139,6 +171,9 @@ class ACTabHost : public content::WebContentsDelegate,
       devtools_input_block_;
   std::unique_ptr<content::WebContents> contents_;
   bool fullscreen_ = false;
+  MediaState media_;
+  mojo::Receiver<media_session::mojom::MediaSessionObserver> media_receiver_{
+      this};
 };
 
 }  // namespace argon_core

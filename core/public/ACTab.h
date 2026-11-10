@@ -44,6 +44,8 @@ NS_SWIFT_NAME(TabDelegate)
 - (void)tab:(ACTab*)tab
     didUpdateFindMatches:(NSInteger)matches
              activeMatch:(NSInteger)activeMatch;
+// Playback, audibility, mute or the media session's title or actions changed.
+- (void)tabDidChangeMedia:(ACTab*)tab;
 @end
 
 // One web page, backed by a WebContents in `profile`.
@@ -96,6 +98,29 @@ NS_SWIFT_NAME(Tab)
 - (void)captureVisibleContentWithCompletion:
     (void (^)(NSImage* _Nullable image))completion
     NS_SWIFT_NAME(captureVisibleContent(completion:));
+
+// The page's media session: set while it has controllable media, playing or
+// paused.
+@property(readonly) BOOL hasMedia;
+@property(readonly, getter=isPlayingMedia) BOOL playingMedia;
+@property(readonly, getter=isAudible) BOOL audible;
+@property(getter=isMuted) BOOL muted;
+// The media session's title, or empty when the page sets none.
+@property(readonly, copy) NSString* mediaTitle;
+@property(readonly) BOOL canPlayPreviousTrack;
+@property(readonly) BOOL canPlayNextTrack;
+@property(readonly) BOOL canEnterPictureInPicture;
+@property(readonly, getter=isInPictureInPicture) BOOL inPictureInPicture;
+- (void)playMedia;
+- (void)pauseMedia;
+- (void)previousTrack;
+- (void)nextTrack;
+- (void)togglePictureInPicture;
+// Whether this site may go into picture in picture when you leave its tab.
+// Stored as Chrome's per-site auto picture-in-picture setting; only an explicit
+// block turns it off. Always NO for pages that are not http or https.
+@property(nonatomic) BOOL autoPictureInPictureAllowed;
+- (void)stopMedia;
 
 // Chrome's print preview, shown over the page.
 - (void)print;

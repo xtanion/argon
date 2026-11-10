@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, ApplicationDelegate {
     private var controller: BrowserWindowController?
+    private var pendingURLs: [URL] = []
 
     func applicationDidStart(_ application: Application) {
         let state = SavedState.load()
@@ -36,12 +37,25 @@ final class AppDelegate: NSObject, ApplicationDelegate {
             self.controller = controller
             controller.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
+            if !self.pendingURLs.isEmpty {
+                controller.open(self.pendingURLs)
+                self.pendingURLs = []
+            }
         }
     }
 
     func applicationShouldHandleReopen(_ application: Application, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows { controller?.showWindow(nil) }
         return false
+    }
+
+    // Profiles load asynchronously at launch, so links can arrive before the window exists.
+    func application(_ application: Application, open urls: [URL]) {
+        guard let controller else {
+            pendingURLs += urls
+            return
+        }
+        controller.open(urls)
     }
 
     func applicationWillShutDown(_ application: Application) {

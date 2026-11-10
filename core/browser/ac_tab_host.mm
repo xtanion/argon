@@ -25,12 +25,15 @@
 #include "content/public/browser/eye_dropper.h"
 #include "content/public/browser/file_select_listener.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
+#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/ui/tab_helpers.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "components/permissions/permission_request_manager.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
+#include "content/public/browser/media_session.h"
 #include "content/public/browser/navigation_controller.h"
+#include "services/media_session/public/cpp/media_metadata.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #import "argon_core/browser/ac_internal.h"
@@ -63,6 +66,7 @@
 @interface ACTab (Host)
 - (void)hostDidChange:(content::InvalidateTypes)flags;
 - (void)hostLoadingChanged;
+- (void)hostMediaChanged;
 - (void)hostFaviconChanged;
 - (void)hostFindMatches:(int)matches active:(int)active;
 - (void)hostRequestedClose;
@@ -128,6 +132,8 @@ ACTabHost::ACTabHost(ACTab* owner,
         base::BindRepeating(&ACTabHost::OnDevToolsChanged));
   }
   Hosts().insert(this);
+  content::MediaSession::Get(contents_.get())
+      ->AddObserver(media_receiver_.BindNewPipeAndPassRemote());
 
   view.postsFrameChangedNotifications = YES;
   ACTabHost* host = this;
@@ -213,7 +219,50 @@ void ACTabHost::CloseContents(content::WebContents* source) {
 void ACTabHost::NavigationStateChanged(content::WebContents* source,
                                        content::InvalidateTypes changed_flags) {
   [owner_ hostDidChange:changed_flags];
+  if (changed_flags & content::INVALIDATE_TYPE_AUDIO) {
+    [owner_ hostMediaChanged];
+  }
 }
+
+void ACTabHost::MediaSessionInfoChanged(
+    media_session::mojom::MediaSessionInfoPtr info) {
+  using State = media_session::mojom::MediaSessionInfo::SessionState;
+  media_.active = info && info->is_controllable &&
+                  info->state != State::kInactive;
+  media_.playing =
+      media_.active && info->playback_state ==
+                           media_session::mojom::MediaPlaybackState::kPlaying;
+  media_.in_picture_in_picture =
+      info && info->picture_in_picture_state ==
+                  media_session::mojom::MediaPictureInPictureState::
+                      kInPictureInPicture;
+  [owner_ hostMediaChanged];
+}
+
+void ACTabHost::MediaSessionMetadataChanged(
+    const std::optional<media_session::MediaMetadata>& metadata) {
+  media_.title = metadata ? metadata->title : std::u16string();
+  [owner_ hostMediaChanged];
+}
+
+void ACTabHost::MediaSessionActionsChanged(
+    const std::vector<media_session::mojom::MediaSessionAction>& actions) {
+  using Action = media_session::mojom::MediaSessionAction;
+  auto has = [&](Action action) {
+    return std::find(actions.begin(), actions.end(), action) != actions.end();
+  };
+  media_.can_previous = has(Action::kPreviousTrack);
+  media_.can_next = has(Action::kNextTrack);
+  media_.can_picture_in_picture = has(Action::kEnterPictureInPicture);
+  [owner_ hostMediaChanged];
+}
+
+void ACTabHost::MediaSessionImagesChanged(
+    const base::flat_map<media_session::mojom::MediaSessionImageType,
+                         std::vector<media_session::MediaImage>>& images) {}
+
+void ACTabHost::MediaSessionPositionChanged(
+    const std::optional<media_session::MediaPosition>& position) {}
 
 void ACTabHost::LoadingStateChanged(content::WebContents* source,
                                     bool should_show_loading_ui) {
@@ -279,6 +328,16 @@ std::unique_ptr<content::EyeDropper> ACTabHost::OpenEyeDropper(
     content::RenderFrameHost* frame,
     content::EyeDropperListener* listener) {
   return ShowEyeDropper(frame, listener);
+}
+
+content::PictureInPictureResult ACTabHost::EnterPictureInPicture(
+    content::WebContents* web_contents) {
+  return PictureInPictureWindowManager::GetInstance()
+      ->EnterVideoPictureInPicture(web_contents);
+}
+
+void ACTabHost::ExitPictureInPicture() {
+  PictureInPictureWindowManager::GetInstance()->ExitPictureInPicture();
 }
 
 void ACTabHost::LoadProgressChanged(double progress) {

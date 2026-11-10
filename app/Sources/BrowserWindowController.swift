@@ -21,6 +21,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         let window = BrowserWindow()
         super.init(window: window)
         window.delegate = self
+        root.sidebarHidden = !Preferences.showSidebarOnLaunch
         window.contentView = root
         window.setFrameAutosaveName("ArgonBrowserWindow")
         if !window.setFrameUsingName("ArgonBrowserWindow") { window.center() }
@@ -127,8 +128,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         let tab = activeSpace.activeTab
         if displayedTab !== tab {
             closeFindBar(focusPage: false)
+            enterAutoPictureInPicture(leaving: displayedTab)
             displayedTab?.tab?.isVisible = false
             displayedTab = tab
+            exitAutoPictureInPicture(returningTo: tab)
         }
         guard let tab, let profile = activeSpace.profile else {
             root.card.show(nil)
@@ -151,6 +154,48 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     private func refreshSidebar(animated: Bool = false) {
         sidebar.update(spaces: spaces, activeIndex: activeIndex, commandBarOpen: root.commandBar?.mode == .newTab, animated: animated)
+        updateNowPlaying()
+    }
+
+    // MARK: Now playing
+
+    private var nowPlaying: BrowserTab?
+    private var dismissedPlayer: BrowserTab?
+
+    func browserTabDidChangeMedia(_ tab: BrowserTab) {
+        guard let page = tab.tab else { return }
+        if tab === dismissedPlayer {
+            guard page.isPlayingMedia else {
+                dismissedPlayerPaused = true
+                return
+            }
+            guard dismissedPlayerPaused else { return }
+            dismissedPlayer = nil
+        }
+        if page.hasMedia, page.isPlayingMedia {
+            nowPlaying = tab
+        } else if tab === nowPlaying, !page.hasMedia {
+            nowPlaying = nil
+        }
+        updateNowPlaying()
+    }
+
+    private var dismissedPlayerPaused = false
+
+    private func updateNowPlaying() {
+        if let tab = nowPlaying, tab.tab?.hasMedia != true || spaceIndex(of: tab) == nil {
+            nowPlaying = nil
+        }
+        sidebar.updateNowPlaying(nowPlaying === activeTab ? nil : nowPlaying)
+    }
+
+    func dismissNowPlaying() {
+        guard let tab = nowPlaying else { return }
+        tab.tab?.pauseMedia()
+        dismissedPlayer = tab
+        dismissedPlayerPaused = false
+        nowPlaying = nil
+        updateNowPlaying()
     }
 
     // MARK: Spaces
@@ -193,11 +238,27 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         refreshSidebar()
     }
 
+    // A video playing in the tab you leave moves to picture in picture, and
+    // comes back when you return. PiP the user started themselves is left alone.
+    private func enterAutoPictureInPicture(leaving tab: BrowserTab?) {
+        guard Preferences.autoPictureInPicture, let tab, let page = tab.tab, page.isPlayingMedia,
+              page.canEnterPictureInPicture, !page.isInPictureInPicture, page.autoPictureInPictureAllowed else { return }
+        page.togglePictureInPicture()
+        tab.autoEnteredPictureInPicture = true
+    }
+
+    private func exitAutoPictureInPicture(returningTo tab: BrowserTab?) {
+        guard let tab, tab.autoEnteredPictureInPicture else { return }
+        tab.autoEnteredPictureInPicture = false
+        if let page = tab.tab, page.isInPictureInPicture { page.togglePictureInPicture() }
+    }
+
     func switchSpace(by delta: Int) {
         selectSpace(min(max(0, activeIndex + delta), spaces.count - 1))
     }
 
     private func switchToSpace(_ index: Int) {
+        enterAutoPictureInPicture(leaving: displayedTab)
         displayedTab?.tab?.isVisible = false
         displayedTab = nil
         root.card.show(nil)
@@ -206,6 +267,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     }
 
     @objc func newSpace(_ sender: Any?) {
+        addSpace { [weak self] space in
+            guard let self, let index = self.spaces.firstIndex(where: { $0 === space }) else { return }
+            self.renameSpace(index)
+        }
+    }
+
+    func addSpace(completion: (@MainActor (Space) -> Void)? = nil) {
         let used = Set(spaces.map(\.symbol))
         let symbol = SpaceSymbols.all.first { !used.contains($0) } ?? "circle"
         let hues = [0.62, 0.08, 0.38, 0.76, 0.9, 0.5, 0.14, 0.0]
@@ -218,8 +286,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             space.profile = profile
             self.spaces.append(space)
             self.selectSpace(self.spaces.count - 1)
-            self.renameSpace(self.spaces.count - 1)
+            completion?(space)
         }
+    }
+
+    func setName(_ name: String, forSpace index: Int) {
+        guard spaces.indices.contains(index), !name.isEmpty, spaces[index].name != name else { return }
+        spaces[index].name = name
+        refreshSidebar()
+        scheduleSave()
     }
 
     func togglePinnedSection() {
@@ -251,8 +326,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         }
     }
 
-    func deleteSpace(_ index: Int) {
-        guard spaces.count > 1, spaces.indices.contains(index), let window else { return }
+    func deleteSpace(_ index: Int, presentingIn sheetWindow: NSWindow? = nil, completion: (@MainActor () -> Void)? = nil) {
+        guard spaces.count > 1, spaces.indices.contains(index), let window = sheetWindow ?? window else { return }
         let alert = NSAlert()
         alert.messageText = "Delete \(spaces[index].name)?"
         alert.informativeText = "Its tabs will close. The space's profile data stays on disk."
@@ -273,6 +348,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
                 self.showActiveTab()
                 self.refreshSidebar()
                 self.scheduleSave()
+                completion?()
             }
         }
     }
@@ -404,6 +480,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     func returnToPinnedURL(_ tab: BrowserTab) {
         tab.returnToPinnedURL()
+    }
+
+    func replacePinnedURL(_ tab: BrowserTab) {
+        guard tab.isPinned, tab.url != nil else { return }
+        tab.pin()
+        refreshSidebar()
+        scheduleSave()
     }
 
     func newFolder(in parent: SidebarFolder? = nil, containing tab: BrowserTab? = nil) {
@@ -669,8 +752,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             NSPasteboard.general.clearContents()
             NSPasteboard.general.writeObjects([image])
             let name = (browserTab.url?.displayHost ?? "Page") + " " + Self.timestamp() + ".png"
-            self.root.showToast("Copied Screenshot", icon: "camera", action: ToastAction(symbol: "square.and.arrow.down", toolTip: "Save to Downloads") { _ in
-                guard let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
+            self.root.showToast("Copied Screenshot", icon: "camera", action: ToastAction(symbol: "square.and.arrow.down", toolTip: "Save to \(FileManager.default.displayName(atPath: Preferences.screenshotFolder.path))") { _ in
+                let folder = Preferences.screenshotFolder
                 let file = folder.appendingPathComponent(name)
                 guard (try? png.write(to: file)) != nil else { return }
                 NSWorkspace.shared.activateFileViewerSelecting([file])
@@ -682,6 +765,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
         return formatter.string(from: Date())
+    }
+
+    // With a profile, the page opens in a space that uses it, switching spaces if needed.
+    func openChromePage(_ host: String, path: String = "", profile identifier: String?) {
+        if let identifier, activeSpace.profileIdentifier != identifier,
+           let index = spaces.firstIndex(where: { $0.profileIdentifier == identifier }) {
+            selectSpace(index)
+        }
+        openChromePage(host, path: path)
+        window?.makeKeyAndOrderFront(nil)
     }
 
     private func openChromePage(_ host: String, path: String = "") {
@@ -741,12 +834,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     }
 
     @objc func openSettings(_ sender: Any?) {
-        let settings = URL(string: "chrome://settings")!
-        if let existing = activeSpace.allTabs.first(where: { $0.url?.scheme == "chrome" && $0.url?.host == "settings" }) {
-            select(existing)
-        } else {
-            openTab(settings)
-        }
+        SettingsWindowController.shared.show()
+    }
+
+    static var current: BrowserWindowController? {
+        let windows = [NSApp.mainWindow, NSApp.keyWindow].compactMap { $0 } + NSApp.windows
+        return windows.lazy.compactMap { $0.windowController as? BrowserWindowController }.first
+    }
+
+    func showQuitHint(duration: TimeInterval) {
+        root.showToast("Press \u{2318}Q again to quit", duration: duration)
+    }
+
+    // Links from other apps open as new tabs in the active space.
+    func open(_ urls: [URL]) {
+        for url in urls { openTab(url) }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc func copyURL(_ sender: Any?) {
@@ -793,7 +897,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     var spaceList: (spaces: [Space], active: Int) { (spaces, activeIndex) }
 
     // Pages are rebuilt in the new profile, so each tab reloads with that profile's cookies and logins.
-    func changeProfile(of space: Space, to identifier: String?) {
+    func changeProfile(of space: Space, to identifier: String?, completion: (@MainActor () -> Void)? = nil) {
         let target = identifier ?? "Space " + UUID().uuidString.prefix(8)
         guard target != space.profileIdentifier else { return }
         Application.shared.loadProfile(identifier: target) { [weak self] profile in
@@ -813,6 +917,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             if isActive { self.showActiveTab() }
             self.refreshSidebar()
             self.scheduleSave()
+            completion?()
         }
     }
     @objc func previousSpace(_ sender: Any?) { switchSpace(by: -1) }

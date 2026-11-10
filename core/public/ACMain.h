@@ -23,6 +23,10 @@ NS_SWIFT_NAME(ApplicationDelegate)
 // unminimize windows itself.
 - (BOOL)applicationShouldHandleReopen:(ACApplication*)application
                     hasVisibleWindows:(BOOL)hasVisibleWindows;
+// Links opened from other apps while Argon is the default browser, or files
+// dropped on the Dock icon. Links that arrive during startup are delivered
+// right after applicationDidStart:.
+- (void)application:(ACApplication*)application openURLs:(NSArray<NSURL*>*)urls;
 @end
 
 // Starts Chromium in the browser process and runs the main loop. Returns the

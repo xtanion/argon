@@ -29,6 +29,26 @@ namespace {
 
 id<ACApplicationDelegate> g_delegate;
 ACApplication* g_application;
+NSMutableArray<NSURL*>* g_pending_urls;
+
+void DeliverURLs(NSArray<NSURL*>* urls) {
+  if ([g_delegate respondsToSelector:@selector(application:openURLs:)]) {
+    [g_delegate application:g_application openURLs:urls];
+  }
+}
+
+// Launch Services can deliver links before startup finishes, so they wait
+// for the delegate. Chromium's handler would open its own browser window.
+void HandleOpenURLs(id self, SEL _cmd, NSApplication* app, NSArray<NSURL*>* urls) {
+  if (!g_application) {
+    if (!g_pending_urls) {
+      g_pending_urls = [NSMutableArray array];
+    }
+    [g_pending_urls addObjectsFromArray:urls];
+    return;
+  }
+  DeliverURLs(urls);
+}
 
 BOOL HandleReopen(id self, SEL _cmd, NSApplication* app, BOOL hasVisibleWindows) {
   if (g_application &&
@@ -61,6 +81,18 @@ void InterceptReopen() {
 }
 
 }  // namespace
+
+namespace argon_core {
+
+void InterceptOpenURLs() {
+  Class app_controller = NSClassFromString(@"AppController");
+  SEL selector = @selector(application:openURLs:);
+  Method method = class_getInstanceMethod(app_controller, selector);
+  CHECK(method);
+  method_setImplementation(method, reinterpret_cast<IMP>(HandleOpenURLs));
+}
+
+}  // namespace argon_core
 
 @implementation ACApplication {
   std::unique_ptr<ScopedKeepAlive> _keepAlive;
@@ -154,6 +186,10 @@ void NotifyApplicationDidStart() {
   g_application = [[ACApplication alloc] initPrivate];
   [g_application startUp];
   [g_delegate applicationDidStart:g_application];
+  if (g_pending_urls.count) {
+    DeliverURLs(g_pending_urls);
+  }
+  g_pending_urls = nil;
 }
 
 void NotifyApplicationWillShutDown() {

@@ -323,26 +323,26 @@ final class Space {
     }
 }
 
-struct SavedState: Codable {
-    struct SavedTab: Codable {
+struct SavedState: Codable, Sendable {
+    struct SavedTab: Codable, Sendable {
         var url: String
         var title: String
         var favicon: String?
     }
 
-    struct SavedItem: Codable {
+    struct SavedItem: Codable, Sendable {
         var tab: SavedTab?
         var folder: SavedFolder?
     }
 
-    struct SavedFolder: Codable {
+    struct SavedFolder: Codable, Sendable {
         var name: String
         var symbol: String
         var expanded: Bool
         var children: [SavedItem]
     }
 
-    struct SavedSpace: Codable {
+    struct SavedSpace: Codable, Sendable {
         var name: String
         var symbol: String
         var hue: Double

@@ -144,8 +144,9 @@ final class HairlineView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         color.setFill()
-        let scale = window?.backingScaleFactor ?? 2
-        NSRect(x: inset, y: (bounds.height - 1 / scale) / 2, width: bounds.width - inset * 2, height: 1 / scale).fill()
+        let mid = convertToBacking(NSPoint(x: 0, y: bounds.midY)).y
+        let pixel = convertFromBacking(NSRect(x: 0, y: floor(mid), width: 1, height: 1)).standardized
+        NSRect(x: inset, y: pixel.minY, width: bounds.width - inset * 2, height: pixel.height).fill()
     }
 }
 

@@ -21,6 +21,8 @@ final class SidebarView: NSView {
     private let spaceClip = FlippedView()
     private let spaceContent = FlippedView()
     private let favoritesGrid = FavoritesGridView()
+    private var pageTop: CGFloat = 0
+    private var gridFrame: NSRect { convert(favoritesGrid.frame, from: spaceContent) }
     private var zoneArmed = true
     private var zoneTimer: DispatchWorkItem?
     private var outgoingSnapshot: NSImageView?
@@ -68,10 +70,10 @@ final class SidebarView: NSView {
         spaceContent.wantsLayer = true
         spaceClip.addSubview(spaceContent)
         tabList.newTabRow = newTabRow
-        for view in [spaceHeader, tabScroll] as [NSView] {
+        for view in [favoritesGrid, spaceHeader, tabScroll] as [NSView] {
             spaceContent.addSubview(view)
         }
-        for view in [toggleButton, backButton, forwardButton, reloadButton, pill, favoritesGrid, spaceClip, spaceBar] as [NSView] {
+        for view in [toggleButton, backButton, forwardButton, reloadButton, pill, spaceClip, spaceBar] as [NSView] {
             addSubview(view)
         }
     }
@@ -112,13 +114,14 @@ final class SidebarView: NSView {
 
         pill.frame = NSRect(x: p, y: Metrics.titlebarHeight, width: w - 2 * p, height: Metrics.rowHeight)
         spaceBar.frame = NSRect(x: 0, y: bounds.height - Metrics.spaceBarHeight, width: w, height: Metrics.spaceBarHeight)
-        let gridHeight = favoritesGrid.contentHeight
-        favoritesGrid.frame = NSRect(x: p, y: pill.frame.maxY + (gridHeight > 0 ? 8 : 0), width: w - 2 * p, height: gridHeight)
-        let clipTop = gridHeight > 0 ? favoritesGrid.frame.maxY + 2 : pill.frame.maxY
+        let clipTop = pill.frame.maxY
         spaceClip.frame = NSRect(x: 0, y: clipTop, width: w, height: max(0, spaceBar.frame.minY - clipTop))
         if swipe == nil, !swipeSettling { spaceContent.frame = spaceClip.bounds }
         outgoingSnapshot?.frame.size = spaceClip.bounds.size
-        spaceHeader.frame = NSRect(x: p, y: 7, width: w - 2 * p, height: Metrics.rowHeight)
+        let gridHeight = favoritesGrid.contentHeight
+        favoritesGrid.frame = NSRect(x: p, y: gridHeight > 0 ? 8 : 0, width: w - 2 * p, height: gridHeight)
+        pageTop = gridHeight > 0 ? favoritesGrid.frame.maxY + 2 : 0
+        spaceHeader.frame = NSRect(x: p, y: pageTop + 7, width: w - 2 * p, height: Metrics.rowHeight)
         let listTop = spaceHeader.frame.maxY
         tabScroll.frame = NSRect(x: 0, y: listTop, width: w, height: max(0, spaceContent.bounds.height - listTop))
         tabList.layoutRows(width: w)
@@ -138,8 +141,12 @@ final class SidebarView: NSView {
         newTabRow.isHighlighted = commandBarOpen
         tabList.update(space: space, active: commandBarOpen ? nil : space.activeTab, spaces: spaces, activeSpace: activeIndex,
                        animated: animated && !Motion.reduced)
-        guard !preview else { return }
-        favoritesGrid.update(favorites: space.favorites, active: commandBarOpen ? nil : space.activeTab, animated: animated && !Motion.reduced)
+        favoritesGrid.update(favorites: space.favorites, active: commandBarOpen ? nil : space.activeTab,
+                             animated: animated && !preview && !Motion.reduced)
+        guard !preview else {
+            needsLayout = true
+            return
+        }
         spaceBar.update(spaces: spaces, activeIndex: activeIndex)
         updateToolbar(for: space.activeTab)
         needsLayout = true
@@ -171,7 +178,7 @@ final class SidebarView: NSView {
 
     // MARK: Favorites drop target
 
-    var listTop: CGFloat { spaceClip.frame.minY }
+    var listTop: CGFloat { spaceClip.frame.minY + pageTop }
 
     func addDragGhost(_ ghost: NSView) { addSubview(ghost, positioned: .above, relativeTo: nil) }
 
@@ -184,7 +191,7 @@ final class SidebarView: NSView {
         }
         if favoritesGrid.favorites.isEmpty {
             if favoritesGrid.showsDropZone {
-                if point.y <= favoritesGrid.frame.maxY + 8 {
+                if point.y <= gridFrame.maxY + 8 {
                     favoritesGrid.setDropZoneHighlighted(true)
                     return 0
                 }
@@ -214,7 +221,7 @@ final class SidebarView: NSView {
             }
             return nil
         }
-        guard point.y <= favoritesGrid.frame.maxY + 6 else {
+        guard point.y <= gridFrame.maxY + 6 else {
             favoritesGrid.setDragPreview(dragging: favoritesGrid.contains(tab) ? tab : nil, index: nil)
             return nil
         }

@@ -28,6 +28,9 @@ void NotifyApplicationWillShutDown();
 
 ACProfile* ProfileFor(Profile* profile);
 
+// Profiles CHECK on destruction that none of their pages are still alive.
+void CloseAllTabs();
+
 }  // namespace argon_core
 
 @interface ACApplication ()

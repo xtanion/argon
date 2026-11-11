@@ -367,8 +367,7 @@ struct SavedState: Codable, Sendable {
 
     static let initial = SavedState(
         spaces: [
-            SavedSpace(name: "Personal", symbol: "house", hue: 0.62, intensity: nil, color: nil, profile: "Default", pinned: nil, tabs: [], active: nil),
-            SavedSpace(name: "Work", symbol: "briefcase", hue: 0.08, intensity: nil, color: nil, profile: "Space Work", pinned: nil, tabs: [], active: nil),
+            SavedSpace(name: "Space 1", symbol: "star.fill", hue: 0.62, intensity: nil, color: "#0A0A0B", profile: "Default", pinned: nil, tabs: [], active: nil),
         ],
         activeSpace: 0
     )

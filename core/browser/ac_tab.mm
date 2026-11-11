@@ -50,7 +50,22 @@ ACTabOpenDisposition ToDisposition(WindowOpenDisposition disposition) {
   }
 }
 
+NSHashTable<ACTab*>* LiveTabs() {
+  static NSHashTable<ACTab*>* tabs = [NSHashTable weakObjectsHashTable];
+  return tabs;
+}
+
 }  // namespace
+
+namespace argon_core {
+
+void CloseAllTabs() {
+  for (ACTab* tab in LiveTabs().allObjects) {
+    [tab close];
+  }
+}
+
+}  // namespace argon_core
 
 @implementation ACTab {
   ACProfile* _profile;
@@ -66,6 +81,7 @@ ACTabOpenDisposition ToDisposition(WindowOpenDisposition disposition) {
     _profile = profile;
     _host =
         std::make_unique<argon_core::ACTabHost>(self, std::move(contents));
+    [LiveTabs() addObject:self];
   }
   return self;
 }

@@ -132,6 +132,7 @@ void InterceptOpenURLs() {
 }
 
 - (void)shutDown {
+  argon_core::CloseAllTabs();
   for (auto& [profile, wrapper] : _profiles) {
     [wrapper profileWillBeDestroyed];
   }

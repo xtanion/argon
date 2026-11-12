@@ -387,7 +387,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     }
 
     private func applyFrame(animated: Bool = true) {
-        Palette.accent = Palette.accent(hue: activeSpace.hue, custom: activeSpace.customColor)
+        Palette.accent = Palette.accent(hue: activeSpace.hue, custom: activeSpace.customColor, on: activeSpace.frameColor)
         root.setFrameColor(activeSpace.frameColor, opacity: CGFloat(activeSpace.opacity), animated: animated)
     }
 

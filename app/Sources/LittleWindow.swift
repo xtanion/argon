@@ -37,7 +37,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         let name: NSAppearance.Name = space.frameColor.isDarkFrame ? .darkAqua : .aqua
         window.appearance = NSAppearance(named: name)
         root.openButton.title = "Open in \(space.name)"
-        root.openButton.accent = Palette.accent(hue: space.hue, custom: space.customColor)
+        root.openButton.accent = Palette.accent(hue: space.hue, custom: space.customColor, on: space.frameColor)
         root.openButton.action = { [weak self] in self?.openInBrowser(space: nil) }
         root.copyButton.action = { [weak self] in self?.copyURL(nil) }
         root.menuButton.action = { [weak self] in self?.showMenu() }

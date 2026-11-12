@@ -103,6 +103,13 @@ enum Palette {
                        brightness: max(custom.brightnessComponent, 0.78), alpha: 1)
     }
 
+    static func accent(hue: Double, custom: NSColor?, on frame: NSColor) -> NSColor {
+        let base = accent(hue: hue, custom: custom)
+        guard !frame.isDarkFrame, let rgb = base.usingColorSpace(.sRGB) else { return base }
+        if rgb.saturationComponent < 0.08 { return NSColor(white: 0.25, alpha: 1) }
+        return NSColor(hue: rgb.hueComponent, saturation: max(rgb.saturationComponent, 0.6), brightness: 0.42, alpha: 1)
+    }
+
     static func accentGradient(_ accent: NSColor) -> [CGColor] {
         [accent.cgColor, (accent.blended(withFraction: 0.35, of: .white) ?? accent).cgColor]
     }

@@ -1023,3 +1023,48 @@ index 335fa10824..d84eb1f0b0 100644
    // Gets the extensions-specific Group ID.
    static int GetGroupId(const tab_groups::TabGroupId& id);
  
+diff --git a/chrome/browser/ui/passwords/passwords_client_ui_delegate.cc b/chrome/browser/ui/passwords/passwords_client_ui_delegate.cc
+index 419655922c..27e1d695a8 100644
+--- a/chrome/browser/ui/passwords/passwords_client_ui_delegate.cc
++++ b/chrome/browser/ui/passwords/passwords_client_ui_delegate.cc
+@@ -6,8 +6,23 @@
+ 
+ #include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
+ 
++namespace {
++
++ExternalPasswordsClientUIDelegateLookup g_external_lookup = nullptr;
++
++}  // namespace
++
++void SetExternalPasswordsClientUIDelegateLookup(
++    ExternalPasswordsClientUIDelegateLookup lookup) {
++  g_external_lookup = lookup;
++}
++
+ PasswordsClientUIDelegate* PasswordsClientUIDelegateFromWebContents(
+     content::WebContents* web_contents) {
+   DCHECK(web_contents);
+-  return ManagePasswordsUIController::FromWebContents(web_contents);
++  if (ManagePasswordsUIController* controller =
++          ManagePasswordsUIController::FromWebContents(web_contents)) {
++    return controller;
++  }
++  return g_external_lookup ? g_external_lookup(web_contents) : nullptr;
+ }
+diff --git a/chrome/browser/ui/passwords/passwords_client_ui_delegate.h b/chrome/browser/ui/passwords/passwords_client_ui_delegate.h
+index 2b03bda160..2c44c5e7d6 100644
+--- a/chrome/browser/ui/passwords/passwords_client_ui_delegate.h
++++ b/chrome/browser/ui/passwords/passwords_client_ui_delegate.h
+@@ -153,4 +153,11 @@ class PasswordsClientUIDelegate {
+ PasswordsClientUIDelegate* PasswordsClientUIDelegateFromWebContents(
+     content::WebContents* web_contents);
+ 
++// Embedders whose tabs have no ManagePasswordsUIController supply their own
++// delegate for a WebContents, or null.
++using ExternalPasswordsClientUIDelegateLookup =
++    PasswordsClientUIDelegate* (*)(content::WebContents* web_contents);
++void SetExternalPasswordsClientUIDelegateLookup(
++    ExternalPasswordsClientUIDelegateLookup lookup);
++
+ #endif  // CHROME_BROWSER_UI_PASSWORDS_PASSWORDS_CLIENT_UI_DELEGATE_H_

@@ -31,6 +31,11 @@
 #include "chrome/browser/extensions/navigation_extension_enabler.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/ui/tab_helpers.h"
+#include "argon_core/browser/ac_passwords_ui.h"
+#include "chrome/browser/ui/autofill/autofill_client_provider.h"
+#include "chrome/browser/ui/autofill/autofill_client_provider_factory.h"
+#include "chrome/browser/password_manager/chrome_password_manager_client.h"
+#include "chrome/browser/profiles/profile.h"
 #include "extensions/browser/view_type_utils.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/input/native_web_keyboard_event.h"
@@ -103,6 +108,13 @@ ACTabHost::ACTabHost(ACTab* owner,
   contents_->SetDelegate(this);
   ChromeDevToolsManagerDelegate::MarkAsEmbedderTab(contents_.get());
   TabHelpers::AttachTabHelpers(contents_.get(), /*enable_browser_autofill=*/true);
+  Profile* profile =
+      Profile::FromBrowserContext(contents_->GetBrowserContext());
+  if (!autofill::AutofillClientProviderFactory::GetForProfile(profile)
+           .uses_platform_autofill()) {
+    ChromePasswordManagerClient::CreateForWebContents(contents_.get());
+  }
+  ACPasswordsUI::CreateForWebContents(contents_.get());
   favicon::CreateContentFaviconDriverForWebContents(contents_.get());
   // Chrome attaches these in TabFeatures, which only runs for Browser tabs.
   FindBarState::ConfigureWebContents(contents_.get());

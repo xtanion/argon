@@ -3,6 +3,7 @@
 // the terms of the GPL-3.0 license that can be found in the LICENSE file.
 
 #import "argon_core/browser/ac_internal.h"
+#import "argon_core/browser/ac_passwords_ui.h"
 
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
@@ -154,6 +155,7 @@ void InterceptOpenURLs() {
   InterceptReopen();
   InstallApplePasswordsHost();
   argon_core::RegisterTabsWithExtensions();
+  argon_core::ACPasswordsUI::Install();
   // Chromium posts this once quitting is decided; the main loop only exits
   // after every keep-alive is gone, so holding ours past it hangs the quit.
   __weak ACApplication* weakSelf = self;

@@ -183,7 +183,6 @@ struct ToastAction {
 }
 
 // Transient notification pill shown over the page; present it through RootView.showToast.
-// A duration of .infinity keeps it up until one of its actions runs.
 @MainActor
 final class ToastView: HoverView {
     private static let height: CGFloat = 44

@@ -1,6 +1,5 @@
 import Foundation
 
-// Semantic Versioning 2.0 precedence; a leading "v" is accepted and build metadata is ignored.
 struct SemanticVersion: Comparable, Hashable, Sendable, CustomStringConvertible {
     let major: Int
     let minor: Int

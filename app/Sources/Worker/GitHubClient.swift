@@ -23,8 +23,6 @@ enum GitHubError: Error, LocalizedError, RetryAfterError {
     }
 }
 
-// Minimal GitHub REST client: conditional requests through a disk ETag cache, and a
-// local block once the rate limit is hit so repeated calls don't burn more quota.
 actor GitHubClient {
     static let shared = GitHubClient()
 

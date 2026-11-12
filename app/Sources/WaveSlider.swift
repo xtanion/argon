@@ -43,8 +43,6 @@ final class WaveSlider: NSView {
         animated ? animateShown() : snapShown()
     }
 
-    // MARK: Geometry
-
     private var track: NSRect {
         NSRect(x: bounds.minX, y: bounds.midY - Self.trackHeight / 2, width: bounds.width, height: Self.trackHeight)
     }
@@ -74,8 +72,6 @@ final class WaveSlider: NSView {
     }
 
     private func clamp(_ v: Double) -> Double { min(max(v, minValue), maxValue) }
-
-    // MARK: Drawing
 
     override func draw(_ dirtyRect: NSRect) {
         let dark = Palette.isDark(effectiveAppearance)
@@ -135,8 +131,6 @@ final class WaveSlider: NSView {
     override func drawFocusRingMask() {
         NSBezierPath(roundedRect: track, xRadius: track.height / 2, yRadius: track.height / 2).fill()
     }
-
-    // MARK: Interaction
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
@@ -216,8 +210,6 @@ final class WaveSlider: NSView {
         if detent(old) != detent(new) { performer.perform(.alignment, performanceTime: .now) }
     }
 
-    // MARK: Thumb motion
-
     private func snapShown() {
         tween?.stop()
         tween = nil
@@ -240,8 +232,6 @@ final class WaveSlider: NSView {
             needsDisplay = true
         }
     }
-
-    // MARK: Accessibility
 
     private var accessibilityValueText: String { "\(Int((value * 100).rounded()))%" }
 

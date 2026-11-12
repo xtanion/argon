@@ -10,12 +10,10 @@ struct JobContext: Sendable {
     let lastSuccess: Date?
 }
 
-// Errors that know when the work may be retried, such as a rate limit reset.
 protocol RetryAfterError: Error {
     var retryAfter: Date? { get }
 }
 
-// A unit of background work. run executes off the main actor; deliver and fail run on it.
 protocol BackgroundJob: Sendable {
     associatedtype Output: Sendable
 
@@ -113,8 +111,6 @@ final class BackgroundWorker {
         manualRequests.insert(identifier)
         if running[identifier] == nil { launch(identifier) }
     }
-
-    // Call after a job's isEnabled changes so the timer picks it up or drops it.
     func reschedule() { arm() }
 
     func record(for identifier: String) -> JobRecord {

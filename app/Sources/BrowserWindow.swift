@@ -110,7 +110,6 @@ final class ContentCardView: NSView {
     }
 }
 
-// Paints the frame color behind everything, over a behind-window blur when translucent.
 @MainActor
 final class FrameBackdropView: NSView {
     private let tint = NSView()

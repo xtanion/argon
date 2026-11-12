@@ -14,19 +14,24 @@
 #include "components/password_manager/core/browser/password_form_manager_for_ui.h"
 #include "content/public/browser/web_contents_user_data.h"
 
+@class ACPasswordOffer;
+@class ACTab;
 @class NSAlert;
 
 namespace argon_core {
 
 // Stands in for Chrome's ManagePasswordsUIController on Argon tabs, which have
-// no location bar to anchor its bubbles. Save and update offers become a sheet
-// on the tab's window; everything else is dropped.
+// no location bar to anchor its bubbles. Save and update offers go to the tab's
+// delegate as an ACPasswordOffer, or a sheet when it doesn't take them;
+// everything else is dropped.
 class ACPasswordsUI : public PasswordsClientUIDelegate,
                       public content::WebContentsUserData<ACPasswordsUI> {
  public:
   ~ACPasswordsUI() override;
 
   static void Install();
+
+  void Respond(ACPasswordOffer* offer, long response);
 
   void OnPasswordSubmitted(
       std::unique_ptr<password_manager::PasswordFormManagerForUI> form_manager)
@@ -75,7 +80,7 @@ class ACPasswordsUI : public PasswordsClientUIDelegate,
   void OnPasskeyUpgrade(std::string passkey_rp_id) override {}
 
  private:
-  explicit ACPasswordsUI(content::WebContents* web_contents);
+  ACPasswordsUI(content::WebContents* web_contents, ACTab* owner);
   friend WebContentsUserData;
 
   void Offer(
@@ -83,10 +88,13 @@ class ACPasswordsUI : public PasswordsClientUIDelegate,
       bool update);
   void OnResponse(long response);
   void Dismiss();
+  void ShowAlert(NSString* site, NSString* username);
 
   std::unique_ptr<password_manager::PasswordFormManagerForUI> pending_;
   bool pending_is_update_ = false;
   NSAlert* __strong alert_ = nil;
+  ACPasswordOffer* __strong offer_ = nil;
+  __weak ACTab* owner_ = nil;
   base::WeakPtrFactory<ACPasswordsUI> weak_factory_{this};
 
   WEB_CONTENTS_USER_DATA_KEY_DECL();

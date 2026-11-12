@@ -11,6 +11,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class ACPasswordOffer;
 @class ACProfile;
 @class ACTab;
 
@@ -46,6 +47,30 @@ NS_SWIFT_NAME(TabDelegate)
              activeMatch:(NSInteger)activeMatch;
 // Playback, audibility, mute or the media session's title or actions changed.
 - (void)tabDidChangeMedia:(ACTab*)tab;
+// A form submission produced a password worth saving or updating. Answer with
+// one of the offer's methods. Without this method the offer appears as a sheet.
+- (void)tab:(ACTab*)tab didOfferPassword:(ACPasswordOffer*)offer;
+// The offer was replaced or its tab went away before it was answered.
+- (void)tab:(ACTab*)tab didWithdrawPasswordOffer:(ACPasswordOffer*)offer;
+@end
+
+AC_OBJC_EXPORT
+NS_SWIFT_UI_ACTOR
+NS_SWIFT_NAME(PasswordOffer)
+@interface ACPasswordOffer : NSObject
+
+@property(readonly, copy) NSString* site;
+@property(readonly, copy) NSString* username;
+@property(readonly, getter=isUpdate) BOOL update;
+// NO once answered or withdrawn; the answer methods then do nothing.
+@property(readonly, getter=isPending) BOOL pending;
+
+- (void)save;
+- (void)notNow;
+- (void)neverForThisSite;
+
+- (instancetype)init NS_UNAVAILABLE;
+
 @end
 
 // One web page, backed by a WebContents in `profile`.

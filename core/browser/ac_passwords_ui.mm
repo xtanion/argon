@@ -12,6 +12,69 @@
 #include "components/password_manager/core/browser/password_form_manager_for_ui.h"
 #include "components/url_formatter/elide_url.h"
 #include "content/public/browser/web_contents.h"
+#import "argon_core/public/ACTab.h"
+
+@interface ACPasswordOffer ()
+- (instancetype)initWithSite:(NSString*)site
+                    username:(NSString*)username
+                      update:(BOOL)update
+                          ui:(base::WeakPtr<argon_core::ACPasswordsUI>)ui
+    NS_DESIGNATED_INITIALIZER;
+- (void)withdraw;
+@end
+
+@implementation ACPasswordOffer {
+  base::WeakPtr<argon_core::ACPasswordsUI> _ui;
+}
+
+@synthesize site = _site;
+@synthesize username = _username;
+@synthesize update = _update;
+@synthesize pending = _pending;
+
+- (instancetype)initWithSite:(NSString*)site
+                    username:(NSString*)username
+                      update:(BOOL)update
+                          ui:(base::WeakPtr<argon_core::ACPasswordsUI>)ui {
+  if ((self = [super init])) {
+    _site = [site copy];
+    _username = [username copy];
+    _update = update;
+    _pending = YES;
+    _ui = ui;
+  }
+  return self;
+}
+
+- (void)withdraw {
+  _pending = NO;
+}
+
+- (void)answer:(long)response {
+  if (!_pending) {
+    return;
+  }
+  _pending = NO;
+  if (_ui) {
+    _ui->Respond(self, response);
+  }
+}
+
+- (void)save {
+  [self answer:NSAlertFirstButtonReturn];
+}
+
+- (void)notNow {
+  [self answer:NSAlertSecondButtonReturn];
+}
+
+- (void)neverForThisSite {
+  if (!_update) {
+    [self answer:NSAlertThirdButtonReturn];
+  }
+}
+
+@end
 
 namespace argon_core {
 
@@ -23,8 +86,9 @@ PasswordsClientUIDelegate* Lookup(content::WebContents* web_contents) {
 
 }  // namespace
 
-ACPasswordsUI::ACPasswordsUI(content::WebContents* web_contents)
-    : content::WebContentsUserData<ACPasswordsUI>(*web_contents) {}
+ACPasswordsUI::ACPasswordsUI(content::WebContents* web_contents, ACTab* owner)
+    : content::WebContentsUserData<ACPasswordsUI>(*web_contents),
+      owner_(owner) {}
 
 ACPasswordsUI::~ACPasswordsUI() {
   Dismiss();
@@ -58,11 +122,6 @@ void ACPasswordsUI::Offer(
     std::unique_ptr<password_manager::PasswordFormManagerForUI> form_manager,
     bool update) {
   Dismiss();
-  NSWindow* window =
-      GetWebContents().GetNativeView().GetNativeNSView().window;
-  if (!window || window.attachedSheet) {
-    return;
-  }
   pending_ = std::move(form_manager);
   pending_is_update_ = update;
 
@@ -73,6 +132,27 @@ void ACPasswordsUI::Offer(
   NSString* username = base::SysUTF16ToNSString(
       GetDisplayUsername(pending_->GetPendingCredentials()));
 
+  ACTab* tab = owner_;
+  id<ACTabDelegate> delegate = tab.delegate;
+  if ([delegate respondsToSelector:@selector(tab:didOfferPassword:)]) {
+    offer_ = [[ACPasswordOffer alloc] initWithSite:site
+                                          username:username
+                                            update:update
+                                                ui:weak_factory_.GetWeakPtr()];
+    [delegate tab:tab didOfferPassword:offer_];
+    return;
+  }
+  ShowAlert(site, username);
+}
+
+void ACPasswordsUI::ShowAlert(NSString* site, NSString* username) {
+  NSWindow* window =
+      GetWebContents().GetNativeView().GetNativeNSView().window;
+  if (!window || window.attachedSheet) {
+    pending_.reset();
+    return;
+  }
+  bool update = pending_is_update_;
   alert_ = [[NSAlert alloc] init];
   alert_.messageText =
       update ? [NSString stringWithFormat:@"Update password for %@?", site]
@@ -92,6 +172,14 @@ void ACPasswordsUI::Offer(
                      weak->OnResponse(response);
                    }
                  }];
+}
+
+void ACPasswordsUI::Respond(ACPasswordOffer* offer, long response) {
+  if (offer != offer_) {
+    return;
+  }
+  offer_ = nil;
+  OnResponse(response);
 }
 
 void ACPasswordsUI::OnResponse(long response) {
@@ -120,6 +208,15 @@ void ACPasswordsUI::OnResponse(long response) {
 
 void ACPasswordsUI::Dismiss() {
   pending_.reset();
+  if (ACPasswordOffer* offer = offer_) {
+    offer_ = nil;
+    [offer withdraw];
+    ACTab* tab = owner_;
+    id<ACTabDelegate> delegate = tab.delegate;
+    if ([delegate respondsToSelector:@selector(tab:didWithdrawPasswordOffer:)]) {
+      [delegate tab:tab didWithdrawPasswordOffer:offer];
+    }
+  }
   NSAlert* alert = alert_;
   alert_ = nil;
   NSWindow* sheet = alert.window;

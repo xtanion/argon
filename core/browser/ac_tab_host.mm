@@ -114,7 +114,7 @@ ACTabHost::ACTabHost(ACTab* owner,
            .uses_platform_autofill()) {
     ChromePasswordManagerClient::CreateForWebContents(contents_.get());
   }
-  ACPasswordsUI::CreateForWebContents(contents_.get());
+  ACPasswordsUI::CreateForWebContents(contents_.get(), owner);
   favicon::CreateContentFaviconDriverForWebContents(contents_.get());
   // Chrome attaches these in TabFeatures, which only runs for Browser tabs.
   FindBarState::ConfigureWebContents(contents_.get());

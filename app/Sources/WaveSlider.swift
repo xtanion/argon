@@ -17,7 +17,8 @@ final class WaveSlider: NSView {
 
     private static let trackHeight: CGFloat = 14
     private static let thumbSize = NSSize(width: 14, height: 32)
-    private static let amplitude: CGFloat = 3.8
+    private static let minAmplitude: CGFloat = 0.8
+    private static let maxAmplitude: CGFloat = 5.5
     private static let wavelength: CGFloat = 26
     private static let lineWidth: CGFloat = 3.2
 
@@ -27,6 +28,7 @@ final class WaveSlider: NSView {
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         setAccessibilityElement(true)
         setAccessibilityRole(.slider)
+        focusRingType = .none
     }
 
     @available(*, unavailable)
@@ -83,7 +85,8 @@ final class WaveSlider: NSView {
         ink.withAlphaComponent(dark ? 0.08 : 0.06).setFill()
         capsule.fill()
 
-        let wave = Self.wave(from: travel.lowerBound, to: travel.upperBound, midY: track.midY)
+        let amplitude = Self.minAmplitude + (Self.maxAmplitude - Self.minAmplitude) * min(max(fraction(shown), 0), 1)
+        let wave = Self.wave(from: travel.lowerBound, to: travel.upperBound, midY: track.midY, amplitude: amplitude)
         wave.lineWidth = Self.lineWidth
         wave.lineCapStyle = .round
         wave.lineJoinStyle = .round
@@ -114,7 +117,7 @@ final class WaveSlider: NSView {
         }
     }
 
-    private static func wave(from start: CGFloat, to end: CGFloat, midY: CGFloat) -> NSBezierPath {
+    private static func wave(from start: CGFloat, to end: CGFloat, midY: CGFloat, amplitude: CGFloat) -> NSBezierPath {
         let path = NSBezierPath()
         let step: CGFloat = 1
         var x = start
@@ -124,12 +127,6 @@ final class WaveSlider: NSView {
             path.line(to: NSPoint(x: x, y: midY - amplitude * sin((x - start) / wavelength * 2 * .pi)))
         }
         return path
-    }
-
-    override var focusRingMaskBounds: NSRect { track }
-
-    override func drawFocusRingMask() {
-        NSBezierPath(roundedRect: track, xRadius: track.height / 2, yRadius: track.height / 2).fill()
     }
 
     override func mouseDown(with event: NSEvent) {

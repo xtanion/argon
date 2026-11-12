@@ -17,6 +17,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     var frameColor: NSColor { didSet { updatePanelColor() } }
 
     private let panel = NSView()
+    private let frost = FrostView()
     private let glyph = NSImageView()
     private let field = NSTextField()
     private let divider = HairlineView(inset: 0, color: Palette.white(0x1F))
@@ -41,13 +42,14 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         panel.wantsLayer = true
         panel.layer?.cornerRadius = Metrics.cardRadius
         panel.layer?.cornerCurve = .continuous
-        panel.shadow = {
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
-            shadow.shadowBlurRadius = 40
-            shadow.shadowOffset = NSSize(width: 0, height: -12)
-            return shadow
-        }()
+        panel.layer?.shadowColor = NSColor.black.cgColor
+        panel.layer?.shadowOpacity = Metrics.shadowOpacity
+        panel.layer?.shadowRadius = Metrics.shadowRadius
+        panel.layer?.shadowOffset = Metrics.shadowOffset
+        frost.cornerRadius = Metrics.cardRadius
+        frost.frame = panel.bounds
+        frost.autoresizingMask = [.width, .height]
+        panel.addSubview(frost)
         updatePanelColor()
 
         glyph.image = .symbol("magnifyingglass", size: 18)
@@ -80,7 +82,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     override var mouseDownCanMoveWindow: Bool { false }
 
     private func updatePanelColor() {
-        panel.layer?.backgroundColor = Palette.commandBar(frame: frameColor).cgColor
+        frost.tint = Palette.commandBar(frame: frameColor)
     }
 
     func activate() {
@@ -104,6 +106,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         }
         let top = max(20, bounds.height * 0.34 - header)
         panel.frame = NSRect(x: (bounds.width - width) / 2, y: top, width: width, height: height)
+        panel.layer?.shadowPath = CGPath(roundedRect: panel.bounds, cornerWidth: Metrics.cardRadius,
+                                         cornerHeight: Metrics.cardRadius, transform: nil)
 
         let ph = panel.bounds.height
         func flip(_ y: CGFloat, _ h: CGFloat) -> CGFloat { ph - y - h }
@@ -377,7 +381,7 @@ final class CommandRowView: NSView {
     private let icon = NSImageView()
     private let title = NSTextField.sidebarLabel(font: Typography.commandTitle)
     private let subtitle = NSTextField.sidebarLabel(font: Typography.commandSubtitle, color: Palette.subtle)
-    private let switchLabel = NSTextField.sidebarLabel("Switch to Tab", font: .systemFont(ofSize: 12, weight: .medium), color: Palette.subtle)
+    private let switchLabel = NSTextField.sidebarLabel("Switch to Tab", font: .inter(12, weight: .medium), color: Palette.subtle)
     private let arrowBox = NSView()
     private let arrow = NSImageView()
     private let isTab: Bool

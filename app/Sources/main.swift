@@ -1,5 +1,6 @@
 import AppKit
 
+NSFont.registerBundledFonts()
 LegacySettings.migrate()
 
 let appDelegate = AppDelegate()

@@ -89,9 +89,9 @@ final class TabSwitcherView: NSView {
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.35
-        layer?.shadowRadius = 24
-        layer?.shadowOffset = CGSize(width: 0, height: -8)
+        layer?.shadowOpacity = Metrics.shadowOpacity
+        layer?.shadowRadius = Metrics.shadowRadius
+        layer?.shadowOffset = Metrics.shadowOffset
         for (index, tab) in tabs.enumerated() {
             let card = TabSwitcherCard(tab: tab)
             card.onClick = { [weak self] in self?.onPick?(index) }
@@ -164,7 +164,7 @@ final class TabSwitcherCard: NSView {
 
     init(tab: BrowserTab) {
         titleLabel = .sidebarLabel(tab.title.isEmpty ? (tab.url?.host ?? "New Tab") : tab.title,
-                                   font: .systemFont(ofSize: 12, weight: .medium))
+                                   font: .systemFont(ofSize: 12))
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 12
@@ -203,8 +203,8 @@ final class TabSwitcherCard: NSView {
 
     override func updateLayer() {
         layer?.backgroundColor = isSelected ? Palette.tabActive.cgColor : nil
-        layer?.borderWidth = isSelected ? 1 : 0
-        layer?.borderColor = Palette.subtle.cgColor
+        layer?.borderWidth = isSelected ? 1.5 : 0
+        layer?.borderColor = Palette.accent.cgColor
         preview.layer?.backgroundColor = Palette.placeholder.cgColor
     }
 

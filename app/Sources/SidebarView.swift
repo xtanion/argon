@@ -6,10 +6,10 @@ import UniformTypeIdentifiers
 final class SidebarView: NSView {
     weak var controller: BrowserWindowController?
 
-    private let toggleButton = IconButton(symbol: "sidebar.left", size: 15, toolTip: "Hide Sidebar")
-    private let backButton = IconButton(symbol: "arrow.left", size: 15, toolTip: "Back")
-    private let forwardButton = IconButton(symbol: "arrow.right", size: 15, toolTip: "Forward")
-    private let reloadButton = IconButton(symbol: "arrow.clockwise", size: 15, toolTip: "Reload")
+    private let toggleButton = IconButton(symbol: "sidebar.left", size: 17, toolTip: "Hide Sidebar")
+    private let backButton = IconButton(symbol: "arrow.left", size: 17, toolTip: "Back")
+    private let forwardButton = IconButton(symbol: "arrow.right", size: 17, toolTip: "Forward")
+    private let reloadButton = IconButton(symbol: "arrow.clockwise", size: 17, toolTip: "Reload")
     private let pill = URLPillView()
     private let spaceHeader = SpaceHeaderView()
     private var activeSpaceIndex = 0
@@ -39,9 +39,30 @@ final class SidebarView: NSView {
         let snapshot: NSImageView
     }
 
+    private let frost = FrostView()
+    private let listBottomEdge = HairlineView(inset: 0)
+
+    var accent: NSColor = Palette.accent {
+        didSet { if accent != oldValue { tabList.refreshFolderIcons() } }
+    }
+
+    var floatingTint: NSColor? {
+        didSet {
+            frost.isHidden = floatingTint == nil
+            if let floatingTint { frost.tint = floatingTint }
+            if (floatingTint == nil) != (oldValue == nil) { needsLayout = true }
+        }
+    }
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
+        frost.isHidden = true
+        frost.washOpacity = 0.85
+        frost.cornerRadius = Metrics.cardRadius
+        frost.frame = bounds
+        frost.autoresizingMask = [.width, .height]
+        addSubview(frost)
 
         toggleButton.action = { [weak self] in self?.controller?.toggleSidebarPanel(nil) }
         backButton.action = { [weak self] in self?.controller?.goBack(nil) }
@@ -59,6 +80,10 @@ final class SidebarView: NSView {
         tabScroll.horizontalScrollElasticity = .none
         tabScroll.documentView = tabList
         tabScroll.contentView.drawsBackground = false
+        tabScroll.contentView.postsBoundsChangedNotifications = true
+        tabList.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(updateListBottomEdge), name: NSView.boundsDidChangeNotification, object: tabScroll.contentView)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateListBottomEdge), name: NSView.frameDidChangeNotification, object: tabList)
         tabList.sidebar = self
         spaceBar.sidebar = self
         nowPlaying.sidebar = self
@@ -76,7 +101,7 @@ final class SidebarView: NSView {
         for view in [favoritesGrid, spaceHeader, tabScroll] as [NSView] {
             spaceContent.addSubview(view)
         }
-        for view in [toggleButton, backButton, forwardButton, reloadButton, pill, spaceClip, spaceBar, nowPlaying] as [NSView] {
+        for view in [toggleButton, backButton, forwardButton, reloadButton, pill, spaceClip, listBottomEdge, spaceBar, nowPlaying] as [NSView] {
             addSubview(view)
         }
     }
@@ -103,6 +128,8 @@ final class SidebarView: NSView {
 
     override func layout() {
         super.layout()
+        layer?.shadowPath = floatingTint == nil ? nil
+            : CGPath(roundedRect: bounds, cornerWidth: Metrics.cardRadius, cornerHeight: Metrics.cardRadius, transform: nil)
         let w = bounds.width
         let p = Metrics.padding
         let size = Metrics.toolbarButtonSize
@@ -130,6 +157,13 @@ final class SidebarView: NSView {
         let listTop = spaceHeader.frame.maxY
         tabScroll.frame = NSRect(x: 0, y: listTop, width: w, height: max(0, spaceContent.bounds.height - listTop))
         tabList.layoutRows(width: w)
+        listBottomEdge.frame = NSRect(x: 0, y: spaceClip.frame.maxY, width: w, height: 1)
+        updateListBottomEdge()
+    }
+
+    @objc private func updateListBottomEdge() {
+        let hidden = tabList.frame.maxY - tabScroll.contentView.bounds.maxY < 1
+        if listBottomEdge.isHidden != hidden { listBottomEdge.isHidden = hidden }
     }
 
     func update(spaces: [Space], activeIndex: Int, commandBarOpen: Bool, animated: Bool = false, preview: Bool = false) {
@@ -162,7 +196,7 @@ final class SidebarView: NSView {
         backButton.isEnabled = tab?.tab?.canGoBack ?? false
         forwardButton.isEnabled = tab?.tab?.canGoForward ?? false
         reloadButton.isEnabled = tab != nil
-        reloadButton.setSymbol(tab?.isLoading == true ? "xmark" : "arrow.clockwise", size: 15)
+        reloadButton.setSymbol(tab?.isLoading == true ? "xmark" : "arrow.clockwise", size: 17)
     }
 
     func refresh(_ tab: BrowserTab) {
@@ -384,7 +418,7 @@ final class SidebarView: NSView {
     override func rightMouseDown(with event: NSEvent) { showSidebarMenu(for: event, in: self) }
 
     var isOnRight = false {
-        didSet { toggleButton.setSymbol(isOnRight ? "sidebar.right" : "sidebar.left", size: 15) }
+        didSet { toggleButton.setSymbol(isOnRight ? "sidebar.right" : "sidebar.left", size: 17) }
     }
 
     private var sidebarMenu: ActionMenu?
@@ -395,27 +429,26 @@ final class SidebarView: NSView {
         let anchor = { [weak self] in self?.spaceAnchor(index) }
         let onRight = isOnRight
         let menu = ActionMenu(entries: [
-            .item(ActionMenuItem(title: onRight ? "Move Sidebar to Left" : "Move Sidebar to Right",
-                                 symbol: onRight ? "sidebar.left" : "sidebar.right", shortcut: nil) {
+            .item(ActionMenuItem(title: onRight ? "Move Sidebar to Left" : "Move Sidebar to Right", shortcut: nil) {
                 Preferences.sidebarOnRight = !onRight
             }),
             .separator,
-            .item(ActionMenuItem(title: "Edit Theme", symbol: "paintpalette", shortcut: nil) { [weak self] in
+            .item(ActionMenuItem(title: "Edit Theme", shortcut: nil) { [weak self] in
                 guard let view = anchor() else { return }
                 self?.editTheme(index, relativeTo: view)
             }),
-            .item(ActionMenuItem(title: "Change Icon", symbol: "face.smiling", shortcut: nil) { [weak self] in
+            .item(ActionMenuItem(title: "Change Icon", shortcut: nil) { [weak self] in
                 guard let view = anchor() else { return }
                 self?.editIcon(index, relativeTo: view)
             }),
-            .item(ActionMenuItem(title: "Rename Space", symbol: "pencil", shortcut: nil) { [weak self] in
+            .item(ActionMenuItem(title: "Rename Space", shortcut: nil) { [weak self] in
                 self?.renameSpace(index)
             }),
             .separator,
-            .item(ActionMenuItem(title: "New Tab", symbol: "plus.square", shortcut: "\u{2318}T") { [weak self] in
+            .item(ActionMenuItem(title: "New Tab", shortcut: "\u{2318}T") { [weak self] in
                 self?.controller?.newTab(nil)
             }),
-            .item(ActionMenuItem(title: "New Folder", symbol: "folder", shortcut: nil) { [weak self] in
+            .item(ActionMenuItem(title: "New Folder", shortcut: nil) { [weak self] in
                 self?.controller?.newFolder()
             }),
         ])
@@ -603,6 +636,8 @@ final class TabListView: NSView {
     }
     private var tabRows: [ObjectIdentifier: TabRowView] = [:]
     private var folderRows: [ObjectIdentifier: FolderRowView] = [:]
+
+    func refreshFolderIcons() { folderRows.values.forEach { $0.refresh() } }
     private var entries: [Entry] = []
     private var todayTabs: [BrowserTab] = []
     private var rootCount = 0
@@ -763,11 +798,12 @@ final class TabListView: NSView {
             y += step
         }
         if !entries.isEmpty { y += 4 }
-        y = max(y, 9)
+        y = max(y, 12)
         let clearWidth: CGFloat = clearButton.isHidden ? 0 : clearButton.fittingWidth
-        let dividerInset: CGFloat = revealsClear && clearWidth > 0 ? clearWidth + 10 : 0
-        frames.append((divider, NSRect(x: p, y: y, width: rowWidth - dividerInset, height: 1)))
-        frames.append((clearButton, NSRect(x: p + rowWidth - clearWidth, y: y - 10, width: clearWidth, height: 18)))
+        let clearRight: CGFloat = 16
+        let dividerInset: CGFloat = revealsClear && clearWidth > 0 ? clearWidth + clearRight + 10 : 10
+        frames.append((divider, NSRect(x: p + 10, y: y, width: rowWidth - 10 - dividerInset, height: 1)))
+        frames.append((clearButton, NSRect(x: p + rowWidth - clearRight - clearWidth, y: y - 9, width: clearWidth, height: 18)))
         y += 11
         if let newTabRow {
             frames.append((newTabRow, NSRect(x: p, y: y, width: rowWidth, height: Metrics.rowHeight)))
@@ -1018,25 +1054,50 @@ final class TabListView: NSView {
 // it, which tips its front flap open while the folder is expanded.
 @MainActor
 enum FolderIcon {
-    private static var cache: [String: NSImage] = [:]
+    struct Colors {
+        let stroke: NSColor
+        let tab: NSColor
+        let front: NSColor
 
-    static func image(open: Bool, glyph: String, size: CGFloat) -> NSImage {
-        image(progress: open ? 1 : 0, glyph: glyph, size: size)
+        var key: String { [stroke, tab, front].map { $0.hexString }.joined(separator: ",") }
+
+        static func tinted(by accent: NSColor, dark: Bool) -> Colors {
+            let rgb = accent.usingColorSpace(.sRGB) ?? accent
+            let h = rgb.hueComponent
+            if rgb.saturationComponent < 0.08 {
+                return dark
+                    ? Colors(stroke: NSColor(white: 0.86, alpha: 1), tab: NSColor(white: 0.5, alpha: 1), front: NSColor(white: 0.2, alpha: 1))
+                    : Colors(stroke: NSColor(white: 0.22, alpha: 1), tab: NSColor(white: 0.62, alpha: 1), front: NSColor(white: 0.98, alpha: 1))
+            }
+            if dark {
+                return Colors(stroke: NSColor(colorSpace: .sRGB, hue: h, saturation: 0.35, brightness: 0.96, alpha: 1),
+                              tab: NSColor(colorSpace: .sRGB, hue: h, saturation: 0.75, brightness: 0.78, alpha: 1),
+                              front: NSColor(colorSpace: .sRGB, hue: h, saturation: 0.5, brightness: 0.3, alpha: 1))
+            }
+            return Colors(stroke: NSColor(colorSpace: .sRGB, hue: h, saturation: 0.95, brightness: 0.5, alpha: 1),
+                          tab: NSColor(colorSpace: .sRGB, hue: h, saturation: 0.95, brightness: 0.9, alpha: 1),
+                          front: NSColor(colorSpace: .sRGB, hue: h, saturation: 0.2, brightness: 0.98, alpha: 1))
+        }
     }
 
+    private static var cache: [String: NSImage] = [:]
+
     // progress 0 is closed, 1 is open; in between the back panel leans left and the front shears right.
-    static func image(progress: CGFloat, glyph: String, size: CGFloat) -> NSImage {
+    static func image(progress: CGFloat, glyph: String, size: CGFloat, colors: Colors) -> NSImage {
         let t = min(max(progress, 0), 1)
-        let key = "\(Int((t * 100).rounded()))|\(glyph)|\(size)"
-        if let cached = cache[key] { return cached }
-        let mark = glyph.isEmpty ? nil : NSImage.symbol(glyph, size: size * 0.44, weight: .semibold)
+        let cacheable = t == 0 || t == 1
+        let key = cacheable ? "\(Int(t))|\(glyph)|\(size)|\(colors.key)" : ""
+        if cacheable, let cached = cache[key] { return cached }
+        let mark = glyph.isEmpty ? nil : NSImage.symbol(glyph, size: size * 0.44, weight: .semibold)?.tinted(colors.stroke)
         let image = NSImage(size: NSSize(width: size, height: size), flipped: true) { rect in
             guard let context = NSGraphicsContext.current else { return false }
-            draw(t: t, s: rect.width, mark: mark, context: context)
+            draw(t: t, s: rect.width, mark: mark, colors: colors, context: context)
             return true
         }
-        image.isTemplate = true
-        if t == 0 || t == 1 { cache[key] = image }
+        if cacheable {
+            if cache.count >= 64 { cache.removeAll() }
+            cache[key] = image
+        }
         return image
     }
 
@@ -1058,7 +1119,7 @@ enum FolderIcon {
         return path
     }
 
-    private static func draw(t: CGFloat, s: CGFloat, mark: NSImage?, context: NSGraphicsContext) {
+    private static func draw(t: CGFloat, s: CGFloat, mark: NSImage?, colors: Colors, context: NSGraphicsContext) {
         func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x * s, y: y * s) }
         let lw = s * 0.085
         let r = s * 0.15
@@ -1082,9 +1143,9 @@ enum FolderIcon {
         back.close()
         back.lineWidth = lw
         back.lineJoinStyle = .round
-        NSColor.black.withAlphaComponent(0.45).setFill()
+        colors.tab.setFill()
         back.fill()
-        NSColor.black.setStroke()
+        colors.stroke.setStroke()
         back.stroke()
 
         let front = [
@@ -1102,6 +1163,8 @@ enum FolderIcon {
         frontPath.fill()
         frontPath.stroke()
         context.restoreGraphicsState()
+        colors.front.setFill()
+        frontPath.fill()
         frontPath.stroke()
 
         guard let mark else { return }
@@ -1149,7 +1212,7 @@ final class TextButton: HoverView {
     private let label: NSTextField
 
     init(title: String) {
-        label = NSTextField.sidebarLabel(title, font: .systemFont(ofSize: 10.5, weight: .medium), color: Palette.faint)
+        label = NSTextField.sidebarLabel(title, font: .systemFont(ofSize: 11, weight: .semibold), color: Palette.faint)
         super.init(frame: .zero)
         addSubview(label)
     }
@@ -1222,17 +1285,26 @@ final class FolderRowView: HoverView, NSTextFieldDelegate {
             iconView.image = .symbol(symbol, size: 15)
             iconView.contentTintColor = nil
         } else {
-            iconView.contentTintColor = Palette.text
+            iconView.contentTintColor = nil
             let target: CGFloat = folder.isExpanded ? 1 : 0
             if let shownExpanded, shownExpanded != folder.isExpanded, window != nil {
                 animateOpen(to: target)
             } else if openTicker == nil {
                 openProgress = target
-                iconView.image = FolderIcon.image(progress: target, glyph: symbol, size: 18)
+                iconView.image = FolderIcon.image(progress: target, glyph: symbol, size: 18, colors: folderColors)
             }
         }
         shownExpanded = folder.isExpanded
         needsLayout = true
+    }
+
+    private var folderColors: FolderIcon.Colors {
+        FolderIcon.Colors.tinted(by: sidebar?.accent ?? Palette.accent, dark: Palette.isDark(effectiveAppearance))
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refresh()
     }
 
     private func animateOpen(to target: CGFloat) {
@@ -1241,7 +1313,7 @@ final class FolderRowView: HoverView, NSTextFieldDelegate {
         openTicker = Motion.tween(on: self, duration: 0.26) { [weak self] t in
             guard let self else { return }
             self.openProgress = from + (target - from) * t
-            self.iconView.image = FolderIcon.image(progress: self.openProgress, glyph: self.folder.symbol, size: 18)
+            self.iconView.image = FolderIcon.image(progress: self.openProgress, glyph: self.folder.symbol, size: 18, colors: self.folderColors)
             if t >= 1 { self.openTicker = nil }
         }
     }
@@ -1342,6 +1414,8 @@ final class TabRowView: HoverView {
     private let spinner = LoadingRing()
     private let titleLabel = NSTextField.sidebarLabel()
     private let closeButton = IconButton(symbol: "xmark", size: 11, toolTip: "Close Tab")
+    private let audioButton = IconButton(symbol: "speaker.wave.2", size: 13, toolTip: "Mute Tab")
+    private var audioState: (audible: Bool, muted: Bool) = (false, false)
 
     init(tab: BrowserTab) {
         self.tab = tab
@@ -1352,25 +1426,43 @@ final class TabRowView: HoverView {
             guard let self else { return }
             self.sidebar?.close(self.tab)
         }
-        for view in [iconView, spinner, titleLabel, closeButton] as [NSView] { addSubview(view) }
+        audioButton.isHidden = true
+        audioButton.action = { [weak self] in
+            guard let page = self?.tab.tab else { return }
+            page.isMuted.toggle()
+            self?.refresh()
+        }
+        for view in [iconView, spinner, titleLabel, audioButton, closeButton] as [NSView] { addSubview(view) }
     }
 
     override func layout() {
         super.layout()
         let h = bounds.height
         let icon = Metrics.faviconSize
-        iconView.frame = NSRect(x: 9 + indent, y: (h - icon) / 2, width: icon, height: icon)
+        iconView.frame = NSRect(x: 10 + indent, y: (h - icon) / 2, width: icon, height: icon)
         spinner.frame = iconView.frame
         let closeSize = Metrics.iconFrame
         closeButton.frame = NSRect(x: bounds.width - 6 - closeSize, y: (h - closeSize) / 2, width: closeSize, height: closeSize)
         let titleRight = closeButton.isHidden ? bounds.width - 10 : closeButton.frame.minX - 4
-        let titleX = Metrics.titleX + indent
+        var titleX = Metrics.titleX + indent
+        if !audioButton.isHidden {
+            audioButton.frame = NSRect(x: titleX, y: (h - closeSize) / 2, width: closeSize, height: closeSize)
+            titleX = audioButton.frame.maxX + 4
+        }
         titleLabel.frame = NSRect(x: titleX, y: (h - 17) / 2, width: max(0, titleRight - titleX), height: 17)
     }
 
     func refresh() {
         titleLabel.stringValue = tab.title
         toolTip = tab.url?.absoluteString
+        let audible = tab.tab?.isAudible ?? false
+        let muted = tab.tab?.isMuted ?? false
+        audioButton.isHidden = !audible && !muted
+        if (audible, muted) != audioState {
+            audioState = (audible, muted)
+            audioButton.setSymbol(muted ? "speaker.slash" : "speaker.wave.2", size: 13)
+            audioButton.toolTip = muted ? "Unmute Tab" : "Mute Tab"
+        }
         if tab.isLoading {
             iconView.isHidden = true
             spinner.start(progress: CGFloat(tab.loadProgress))
@@ -1502,7 +1594,7 @@ final class NewTabRowView: HoverView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        plus.image = .symbol("plus", size: 12, weight: .medium)
+        plus.image = .symbol("plus", size: 14)
         plus.imageScaling = .scaleNone
         addSubview(plus)
         addSubview(label)
@@ -1544,10 +1636,10 @@ final class URLPillView: HoverView {
     var url: URL? { didSet { if url != oldValue { updateText(); updateCopyVisibility() } } }
     var revealsCopy = false { didSet { if revealsCopy != oldValue { updateCopyVisibility() } } }
 
-    private let label = NSTextField.sidebarLabel(color: Palette.pillText)
+    private let label = NSTextField.sidebarLabel(font: .systemFont(ofSize: 13), color: Palette.pillText)
     private let searchIcon = NSImageView()
-    private let copyButton = IconButton(symbol: "link", size: 13, toolTip: "Copy Link")
-    let controlsButton = IconButton(symbol: "switch.2", size: 13, toolTip: "Site Controls")
+    private let copyButton = IconButton(symbol: "link", size: 15, toolTip: "Copy Link")
+    let controlsButton = IconButton(symbol: "switch.2", size: 15, toolTip: "Site Controls")
     var controlsOpen = false { didSet { if controlsOpen != oldValue { updateCopyVisibility() } } }
 
     override init(frame: NSRect) {
@@ -1603,7 +1695,7 @@ final class URLPillView: HoverView {
         searchIcon.frame = NSRect(x: 12, y: (h - 14) / 2, width: 14, height: 14)
         controlsButton.frame = NSRect(x: bounds.width - 4 - 28, y: (h - 28) / 2, width: 28, height: 28)
         copyButton.frame = controlsButton.frame.offsetBy(dx: -28, dy: 0)
-        let x: CGFloat = url == nil ? searchIcon.frame.maxX + 9 : 10
+        let x: CGFloat = url == nil ? searchIcon.frame.maxX + 9 : 11.5
         label.frame = NSRect(x: x, y: (h - 17) / 2, width: copyButton.frame.minX - x - 4, height: 17)
     }
 
@@ -1673,13 +1765,12 @@ final class URLPillView: HoverView {
 final class SpaceBarView: NSView {
     weak var sidebar: SidebarView?
     private var buttons: [IconButton] = []
-    private let addButton = IconButton(symbol: "plus", size: 14, toolTip: "New...")
+    private let addButton = IconButton(symbol: "plus", size: 16, weight: .medium, toolTip: "New...")
     private var addMenu: ActionMenu?
     private let downloadsButton = IconButton(symbol: "", size: 14, toolTip: "Downloads")
     private let downloadGlyph = DownloadGlyph()
     private var downloadsPanel: DownloadsPanel?
     private var panelClosedAt: CFTimeInterval = 0
-
     override init(frame: NSRect) {
         super.init(frame: frame)
         addButton.action = { [weak self] in self?.toggleAddMenu() }
@@ -1726,10 +1817,10 @@ final class SpaceBarView: NSView {
         }
         let controller = sidebar?.controller
         let menu = ActionMenu(entries: [
-            .item(ActionMenuItem(title: "New Space", symbol: "plus.square.on.square", shortcut: "\u{2318}N") { controller?.newSpace(nil) }),
-            .item(ActionMenuItem(title: "New Folder", symbol: "folder", shortcut: nil) { controller?.newFolder() }),
+            .item(ActionMenuItem(title: "New Space", shortcut: "\u{2318}N") { controller?.newSpace(nil) }),
+            .item(ActionMenuItem(title: "New Folder", shortcut: nil) { controller?.newFolder() }),
             .separator,
-            .item(ActionMenuItem(title: "New Tab", symbol: "plus.square", shortcut: "\u{2318}T") { controller?.newTab(nil) }),
+            .item(ActionMenuItem(title: "New Tab", shortcut: "\u{2318}T") { controller?.newTab(nil) }),
         ])
         menu.onClose = { [weak self] in self?.addButton.rotateGlyph(to: 0, animated: true) }
         addMenu = menu
@@ -1759,7 +1850,7 @@ final class SpaceBarView: NSView {
             if space.symbol.isEmpty {
                 button.setSymbol("circle.fill", size: 5)
             } else {
-                button.setSymbol(SpaceSymbols.displayName(space.symbol, active: index == activeIndex), size: Metrics.spaceBarIconSize)
+                button.setSymbol(SpaceSymbols.displayName(space.symbol, active: index == activeIndex), size: Metrics.spaceBarIconSize, weight: .medium)
             }
             button.tint = index == activeIndex ? Palette.text : Palette.faint
             button.toolTip = space.name
@@ -1798,8 +1889,10 @@ final class SpaceBarView: NSView {
             button.frame = NSRect(x: x, y: y, width: size, height: size)
             x += size + Metrics.spaceButtonGap
         }
-        addButton.frame = NSRect(x: bounds.width - Metrics.padding - size, y: y, width: size, height: size)
-        downloadsButton.frame = NSRect(x: Metrics.padding, y: y, width: size, height: size)
+        let edge: CGFloat = 32
+        let edgeY = bounds.height - Metrics.spaceBarBottomInset + (size - edge) / 2 - size
+        addButton.frame = NSRect(x: bounds.width - Metrics.padding - edge, y: edgeY, width: edge, height: edge)
+        downloadsButton.frame = NSRect(x: Metrics.padding, y: edgeY, width: edge, height: edge)
         downloadGlyph.frame = downloadsButton.bounds
     }
 }
@@ -1835,7 +1928,7 @@ final class SpaceHeaderView: HoverView {
     private var collapsed = false
     private let iconView = NSImageView()
     private let chevron = CALayer()
-    private let titleLabel = NSTextField.sidebarLabel(font: Typography.sidebarEmphasis, color: Palette.subtle)
+    private let titleLabel = NSTextField.sidebarLabel(font: .systemFont(ofSize: 13, weight: .semibold), color: Palette.subtle)
     private let moreButton = IconButton(symbol: "ellipsis", size: 13, toolTip: "Space Options")
 
     override init(frame: NSRect) {
@@ -1876,9 +1969,11 @@ final class SpaceHeaderView: HoverView {
     override func updateLayer() {
         layer?.cornerRadius = Metrics.rowRadius
         layer?.cornerCurve = .continuous
-        layer?.backgroundColor = isHovered ? Palette.tabHover.cgColor : nil
+        layer?.backgroundColor = isHovered ? Palette.accent.withAlphaComponent(0.16).cgColor : nil
+        titleLabel.textColor = Palette.accent
+        iconView.contentTintColor = Palette.accent
         chevron.contentsScale = window?.backingScaleFactor ?? 2
-        let tint = NSColor(cgColor: Palette.subtle.cgColor) ?? Palette.subtle
+        let tint = Palette.accent
         chevron.contents = NSImage.symbol("chevron.right", size: 12, weight: .semibold)?.tinted(tint)
     }
 
@@ -1890,12 +1985,13 @@ final class SpaceHeaderView: HoverView {
 
     private func updateIcon(animated: Bool) {
         iconView.image = symbolImage
-        iconView.isHidden = isHovered
+        let showsChevron = isHovered || collapsed
+        iconView.isHidden = showsChevron
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        chevron.isHidden = !isHovered
+        chevron.isHidden = !showsChevron
         CATransaction.commit()
-        Motion.rotate(chevron, to: collapsed ? 0 : .pi / 2, animated: animated && isHovered)
+        Motion.rotate(chevron, to: collapsed ? 0 : .pi / 2, animated: animated && showsChevron)
     }
 
     private func showMenu() {
@@ -1933,9 +2029,9 @@ class OverlayPanel: HoverView {
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.35
-        layer?.shadowRadius = 14
-        layer?.shadowOffset = CGSize(width: 0, height: -4)
+        layer?.shadowOpacity = Metrics.shadowOpacity
+        layer?.shadowRadius = Metrics.shadowRadius
+        layer?.shadowOffset = Metrics.shadowOffset
     }
 
     override func updateLayer() {
@@ -2342,7 +2438,7 @@ final class DownloadGlyph: NSView {
         wantsLayer = true
         for shape in [arrow, track, fill] {
             shape.fillColor = nil
-            shape.lineWidth = 1.35
+            shape.lineWidth = 1.6
             shape.lineCap = .round
             shape.lineJoin = .round
             layer?.addSublayer(shape)

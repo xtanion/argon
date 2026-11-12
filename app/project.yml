@@ -22,6 +22,7 @@ targets:
     sources:
       - path: Sources
       - path: Resources/AppIcon.icon
+      - path: Resources/Fonts
     info:
       path: Sources/Info.plist
       properties:

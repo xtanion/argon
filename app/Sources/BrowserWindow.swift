@@ -11,6 +11,7 @@ final class BrowserWindow: NSWindow {
     }
     var trafficLightsHidden = false { didSet { if trafficLightsHidden != oldValue { positionTrafficLights() } } }
     var trafficLightOffset: NSPoint = .zero { didSet { if trafficLightOffset != oldValue { positionTrafficLights() } } }
+    var trafficLightSlide: CGFloat = 0 { didSet { if trafficLightSlide != oldValue { positionTrafficLights() } } }
     var isTranslucent = false {
         didSet {
             guard isTranslucent != oldValue else { return }
@@ -60,7 +61,7 @@ final class BrowserWindow: NSWindow {
         }
         for (index, button) in buttons.enumerated() {
             let origin = NSPoint(
-                x: Metrics.trafficLightInset + trafficLightOffset.x + CGFloat(index) * (buttonPitch ?? 20),
+                x: Metrics.trafficLightInset + trafficLightOffset.x + trafficLightSlide + CGFloat(index) * (buttonPitch ?? 20),
                 y: (height - button.frame.height) / 2 - trafficLightOffset.y
             )
             if button.frame.origin != origin { button.setFrameOrigin(origin) }
@@ -265,6 +266,7 @@ final class RootView: NSView {
     private var dockProgress: CGFloat = 1
     private var dockFromPeek = false
     private var dockTicker: FrameTicker?
+    private var lightsTicker: FrameTicker?
     var contentFullscreen = false { didSet { needsLayout = true; card.isFullBleed = contentFullscreen } }
     private(set) var frameColor: NSColor = Palette.ink
     private(set) var frameOpacity: CGFloat = 1
@@ -314,7 +316,7 @@ final class RootView: NSView {
         }
         applyTint(color, opacity: frameOpacity)
         toast?.fillColor = toastFill
-        if sidebarPeeking { sidebar.layer?.backgroundColor = color.cgColor }
+        if sidebarPeeking { sidebar.floatingTint = color }
         CATransaction.commit()
     }
 
@@ -323,14 +325,14 @@ final class RootView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         applyTint(color, opacity: min(max(opacity, Palette.minimumOpacity), 1))
-        if sidebarPeeking { sidebar.layer?.backgroundColor = color.cgColor }
+        if sidebarPeeking { sidebar.floatingTint = color }
         CATransaction.commit()
     }
 
     private func applyTint(_ color: NSColor, opacity: CGFloat) {
         shownOpacity = opacity
         if opacity < 1 { setTranslucent(true) }
-        backdrop.tintColor = opacity < 1 ? color.withAlphaComponent(opacity).cgColor : color.cgColor
+        backdrop.tintColor = opacity < 1 ? Palette.frameWash(color).withAlphaComponent(opacity).cgColor : color.cgColor
         card.solidBase = opacity < 1 ? color : nil
     }
 
@@ -360,7 +362,6 @@ final class RootView: NSView {
         } else if sidebarPeeking {
             card.frame = fullCard
             sidebar.frame = mirrored(floating)
-            sidebar.layer?.shadowPath = CGPath(roundedRect: sidebar.bounds, cornerWidth: Metrics.cardRadius, cornerHeight: Metrics.cardRadius, transform: nil)
         } else {
             let docked = NSRect(x: 0, y: 0, width: w, height: h)
             let dockedCard = NSRect(x: w, y: inset, width: bounds.width - w - inset, height: h - 2 * inset)
@@ -460,6 +461,8 @@ final class RootView: NSView {
         slide.duration = 0.22
         slide.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
         layer.add(slide, forKey: "peek")
+        (window as? BrowserWindow)?.trafficLightSlide = peekOffset
+        followPeekWithTrafficLights(skipFirst: true)
     }
 
     private func schedulePeekHide() {
@@ -499,7 +502,6 @@ final class RootView: NSView {
             finish()
             return
         }
-        (window as? BrowserWindow)?.trafficLightsHidden = true
         CATransaction.begin()
         CATransaction.setCompletionBlock { MainActor.assumeIsolated { finish() } }
         let slide = CABasicAnimation(keyPath: "transform.translation.x")
@@ -511,21 +513,39 @@ final class RootView: NSView {
         slide.isRemovedOnCompletion = false
         layer.add(slide, forKey: "peek")
         CATransaction.commit()
+        followPeekWithTrafficLights()
+    }
+
+    private func followPeekWithTrafficLights(skipFirst: Bool = false) {
+        lightsTicker?.stop()
+        let follow = { [weak self] () -> Bool in
+            guard let self, let window = self.window as? BrowserWindow, let layer = self.sidebar.layer,
+                  layer.animation(forKey: "peek") != nil else {
+                (self?.window as? BrowserWindow)?.trafficLightSlide = 0
+                self?.lightsTicker = nil
+                return false
+            }
+            let x = (layer.presentation() ?? layer).value(forKeyPath: "transform.translation.x") as? CGFloat
+            window.trafficLightSlide = x ?? 0
+            return true
+        }
+        guard skipFirst || follow() else { return }
+        lightsTicker = FrameTicker(view: self) { _ in follow() }
     }
 
     private func styleSidebar(floating: Bool) {
         guard let layer = sidebar.layer else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer.backgroundColor = floating ? frameColor.cgColor : nil
+        sidebar.floatingTint = floating ? frameColor : nil
         layer.cornerRadius = floating ? Metrics.cardRadius : 0
         layer.cornerCurve = .continuous
         layer.borderWidth = floating ? 0.5 : 0
         layer.borderColor = sidebar.cg(Palette.white(0x24))
-        layer.shadowOpacity = floating ? 1 : 0
-        layer.shadowColor = NSColor.black.withAlphaComponent(0.5).cgColor
-        layer.shadowRadius = 24
-        layer.shadowOffset = CGSize(width: 0, height: -6)
+        layer.shadowOpacity = floating ? Metrics.shadowOpacity : 0
+        layer.shadowColor = NSColor.black.cgColor
+        layer.shadowRadius = Metrics.shadowRadius
+        layer.shadowOffset = Metrics.shadowOffset
         layer.masksToBounds = false
         CATransaction.commit()
     }

@@ -10,20 +10,23 @@ enum Metrics {
     static let tabSpacing: CGFloat = 5
     static let rowRadius: CGFloat = 12
     static let buttonRadius: CGFloat = 6
-    static let cardInset: CGFloat = 8
-    static let cardRadius: CGFloat = 10
+    static let cardInset: CGFloat = 10
+    static let cardRadius: CGFloat = 8
+    static let shadowRadius: CGFloat = 16
+    static let shadowOpacity: Float = 0.08
+    static let shadowOffset = CGSize(width: 0, height: -8)
     static let trafficLightInset: CGFloat = 13
     static let toolbarButtonSize: CGFloat = 32
     static let toolbarButtonPitch: CGFloat = 34
     static let iconFrame: CGFloat = 24
     static let faviconSize: CGFloat = 16
-    static let spaceBarHeight: CGFloat = 44
+    static let spaceBarHeight: CGFloat = 50
     static let spaceBarBottomInset: CGFloat = 10
     static let spaceButtonSize: CGFloat = 28
     static let spaceButtonGap: CGFloat = 6
     static let spaceIconSize: CGFloat = 13
     static let spaceBarIconSize: CGFloat = 11
-    static let titleX: CGFloat = 36
+    static let titleX: CGFloat = 34
     static let folderIndent: CGFloat = 14
 }
 
@@ -53,12 +56,12 @@ enum Palette {
     static let tabHover = dynamic(dark: NSColor(white: 1, alpha: CGFloat(0x1A) / 255)) {
         frameIsVeryLight ? NSColor(white: 0, alpha: CGFloat(0x0A) / 255) : NSColor(white: 1, alpha: CGFloat(0x66) / 255)
     }
-    static let text = white(0xF0)
+    static let text = white(0xDE)
     static let pillText = white(0xC8)
     static let icon = white(0xAC)
     static let subtle = white(0x8A)
     static let faint = white(0x66)
-    static let hairline = white(0x24)
+    static let hairline = white(0x0F)
     static let nowPlaying = dynamic(dark: NSColor(white: 0, alpha: 0.42)) {
         frameIsVeryLight ? NSColor(white: 0, alpha: 0.06) : NSColor(white: 1, alpha: 0.55)
     }
@@ -86,7 +89,36 @@ enum Palette {
     static let placeholder = dynamic(dark: NSColor(white: 1, alpha: CGFloat(0x2A) / 255)) { NSColor(white: 0, alpha: CGFloat(0x0F) / 255) }
 
     static let defaultIntensity = 0.3
-    static let minimumOpacity = 0.1
+
+    nonisolated(unsafe) static var accent = NSColor(srgbRed: 1, green: 0x7E / 255, blue: 0x5F / 255, alpha: 1)
+
+    static func accent(hue: Double, custom: NSColor?) -> NSColor {
+        guard let custom = custom?.usingColorSpace(.sRGB) else {
+            return NSColor(hue: hue, saturation: 0.58, brightness: 0.88, alpha: 1)
+        }
+        if custom.saturationComponent < 0.08 { return NSColor(white: 0.5, alpha: 1) }
+        return NSColor(hue: custom.hueComponent, saturation: max(custom.saturationComponent, 0.45),
+                       brightness: max(custom.brightnessComponent, 0.78), alpha: 1)
+    }
+
+    static func accent(hue: Double, custom: NSColor?, on frame: NSColor) -> NSColor {
+        let base = accent(hue: hue, custom: custom)
+        guard !frame.isDarkFrame, let rgb = base.usingColorSpace(.sRGB) else { return base }
+        if rgb.saturationComponent < 0.08 { return NSColor(white: 0.25, alpha: 1) }
+        return NSColor(hue: rgb.hueComponent, saturation: max(rgb.saturationComponent, 0.6), brightness: 0.42, alpha: 1)
+    }
+
+    static func accentGradient(_ accent: NSColor) -> [CGColor] {
+        [accent.cgColor, (accent.blended(withFraction: 0.35, of: .white) ?? accent).cgColor]
+    }
+    static let minimumOpacity = 0.21
+
+    static func frameWash(_ color: NSColor) -> NSColor {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return color }
+        let floor: CGFloat = 24 / 255, span: CGFloat = 220 / 255
+        return NSColor(srgbRed: floor + rgb.redComponent * span, green: floor + rgb.greenComponent * span,
+                       blue: floor + rgb.blueComponent * span, alpha: 1)
+    }
 
     // Flattens a translucent palette color onto `base`, for surfaces drawn over page content.
     static func opaque(_ overlay: NSColor, on base: NSColor, appearance: NSAppearance) -> NSColor {
@@ -156,12 +188,32 @@ extension NSColor {
 }
 
 @MainActor
+extension NSFont {
+    nonisolated static func registerBundledFonts() {
+        for url in Bundle.main.urls(forResourcesWithExtension: "otf", subdirectory: nil) ?? [] {
+            CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        }
+    }
+
+    nonisolated static func inter(_ size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        let name: String
+        switch weight.rawValue {
+        case ..<0.15: name = "Inter-Regular"
+        case ..<0.27: name = "Inter-Medium"
+        case ..<0.36: name = "Inter-SemiBold"
+        default: name = "Inter-Bold"
+        }
+        return NSFont(name: name, size: size) ?? .systemFont(ofSize: size, weight: weight)
+    }
+}
+
+@MainActor
 enum Typography {
-    static let sidebar = NSFont.systemFont(ofSize: 13)
-    static let sidebarEmphasis = NSFont.systemFont(ofSize: 13, weight: .semibold)
-    static let commandField = NSFont.systemFont(ofSize: 19)
-    static let commandTitle = NSFont.systemFont(ofSize: 14, weight: .medium)
-    static let commandSubtitle = NSFont.systemFont(ofSize: 13)
+    static let sidebar = NSFont.systemFont(ofSize: 14)
+    static let sidebarEmphasis = NSFont.systemFont(ofSize: 14, weight: .semibold)
+    static let commandField = NSFont.inter(19)
+    static let commandTitle = NSFont.inter(14, weight: .medium)
+    static let commandSubtitle = NSFont.inter(13)
 }
 
 @MainActor
@@ -316,7 +368,7 @@ extension NSImage {
     }
 
     static func emoji(_ text: String, size: CGFloat) -> NSImage {
-        let string = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: size)])
+        let string = NSAttributedString(string: text, attributes: [.font: NSFont.inter(size)])
         let textSize = string.size()
         let side = max(textSize.width, textSize.height).rounded(.up)
         return NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in

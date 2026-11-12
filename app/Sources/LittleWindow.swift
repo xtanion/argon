@@ -4,6 +4,8 @@ import AppKit
 final class LittleWindowController: NSWindowController, NSWindowDelegate, BrowserTabObserver {
     private static var open: [LittleWindowController] = []
     private static let size = NSSize(width: 920, height: 660)
+    private static let expandDuration: TimeInterval = 0.48
+    private static let expandCurve = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
 
     static func open(_ url: URL, space: Space, profile: Profile, browser: BrowserWindowController) {
         let controller = LittleWindowController(url: url, space: space, profile: profile, browser: browser)
@@ -35,6 +37,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         let name: NSAppearance.Name = space.frameColor.isDarkFrame ? .darkAqua : .aqua
         window.appearance = NSAppearance(named: name)
         root.openButton.title = "Open in \(space.name)"
+        root.openButton.accent = Palette.accent(hue: space.hue, custom: space.customColor, on: space.frameColor)
         root.openButton.action = { [weak self] in self?.openInBrowser(space: nil) }
         root.copyButton.action = { [weak self] in self?.copyURL(nil) }
         root.menuButton.action = { [weak self] in self?.showMenu() }
@@ -53,11 +56,21 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         var origin = NSPoint(x: screen.midX - size.width / 2 + cascade, y: screen.midY - size.height / 2 - cascade)
         origin.x = min(max(origin.x, screen.minX), screen.maxX - size.width)
         origin.y = min(max(origin.y, screen.minY), screen.maxY - size.height)
-        window.setFrame(NSRect(origin: origin, size: size), display: false)
+        let target = NSRect(origin: origin, size: size)
+        let animated = !Motion.reduced
+        window.setFrame(animated ? target.insetBy(dx: target.width * 0.06, dy: target.height * 0.06) : target, display: false)
+        window.alphaValue = animated ? 0 : 1
         showWindow(nil)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         tab.tab?.focus()
+        guard animated else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.expandDuration
+            context.timingFunction = Self.expandCurve
+            window.animator().setFrame(target, display: true)
+            window.animator().alphaValue = 1
+        }
     }
 
     private func refreshHeader() {
@@ -71,18 +84,17 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
     private func showMenu() {
         guard let browser else { return }
         var entries: [ActionMenuEntry] = [
-            .item(ActionMenuItem(title: "Copy Link", symbol: "link", shortcut: nil) { [weak self] in self?.copyURL(nil) }),
+            .item(ActionMenuItem(title: "Copy Link", shortcut: nil) { [weak self] in self?.copyURL(nil) }),
             .separator,
         ]
         for space in browser.allSpaces where space.profileIdentifier == self.space.profileIdentifier {
-            let symbol = space.symbol.isEmpty ? "circle" : SpaceSymbols.displayName(space.symbol, active: false)
-            entries.append(.item(ActionMenuItem(title: "Open in \(space.name)", symbol: symbol, shortcut: nil) { [weak self] in
+            entries.append(.item(ActionMenuItem(title: "Open in \(space.name)", shortcut: nil) { [weak self] in
                 self?.openInBrowser(space: space)
             }))
         }
         entries += [
             .separator,
-            .item(ActionMenuItem(title: "Link Routing\u{2026}", symbol: "arrow.triangle.branch", shortcut: nil) {
+            .item(ActionMenuItem(title: "Link Routing\u{2026}", shortcut: nil) {
                 SettingsWindowController.shared.show(.links)
             }),
         ]
@@ -98,13 +110,29 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
             return
         }
         adopted = true
-        let offer = passwordOffers.takePending()
-        tab.observer = nil
-        root.card.show(nil)
-        browser.adopt(tab, into: destination)
-        if let offer { browser.passwordOffers.present(offer) }
-        if let url = tab.url, target != nil { browser.offerRule(for: url, space: destination) }
-        close()
+        let handOff: @MainActor () -> Void = { [weak self, weak browser] in
+            guard let self, let browser else { return }
+            let offer = self.passwordOffers.takePending()
+            self.tab.observer = nil
+            self.root.card.show(nil)
+            browser.adopt(self.tab, into: destination)
+            if let offer { browser.passwordOffers.present(offer) }
+            if let url = self.tab.url, target != nil { browser.offerRule(for: url, space: destination) }
+            self.close()
+        }
+        guard !Motion.reduced, let window, let landing = browser.pageFrameOnScreen else {
+            handOff()
+            return
+        }
+        browser.window?.orderFront(nil)
+        window.orderFront(nil)
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Self.expandDuration
+            context.timingFunction = Self.expandCurve
+            window.animator().setFrame(landing, display: true)
+        }, completionHandler: {
+            MainActor.assumeIsolated { handOff() }
+        })
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -182,8 +210,8 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
 @MainActor
 final class LittleRootView: NSView {
     let card = ContentCardView()
-    let titleLabel = NSTextField.sidebarLabel("", font: .systemFont(ofSize: 13, weight: .semibold))
-    let hostLabel = NSTextField.sidebarLabel("", font: .systemFont(ofSize: 12), color: Palette.faint)
+    let titleLabel = NSTextField.sidebarLabel("", font: .inter(13, weight: .semibold))
+    let hostLabel = NSTextField.sidebarLabel("", font: .inter(12), color: Palette.faint)
     let copyButton = IconButton(symbol: "link", size: 14, toolTip: "Copy Link")
     let menuButton = IconButton(symbol: "ellipsis", size: 14, toolTip: "More")
     let openButton = LittleOpenButton()
@@ -270,17 +298,20 @@ final class LittleOpenButton: HoverView {
             superview?.needsLayout = true
         }
     }
-    private let label = NSTextField.sidebarLabel("", font: .systemFont(ofSize: 12, weight: .semibold))
+    var accent = Palette.accent { didSet { needsDisplay = true } }
+    private let label = NSTextField.sidebarLabel("", font: .inter(12, weight: .semibold), color: .white)
     private let icon = NSImageView()
+    private let fill = AccentFill()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         layer?.cornerRadius = 8
         layer?.cornerCurve = .continuous
         icon.image = .symbol("arrow.up.left.and.arrow.down.right", size: 11, weight: .semibold)
-        icon.contentTintColor = Palette.text
+        icon.contentTintColor = .white
         icon.imageScaling = .scaleNone
         label.alignment = .left
+        fill.install(in: self)
         addSubview(icon)
         addSubview(label)
     }
@@ -294,10 +325,11 @@ final class LittleOpenButton: HoverView {
         super.layout()
         icon.frame = NSRect(x: 10, y: (bounds.height - 16) / 2, width: 16, height: 16)
         label.frame = NSRect(x: 30, y: (bounds.height - 16) / 2, width: bounds.width - 38, height: 16)
+        needsDisplay = true
     }
 
     override func updateLayer() {
-        layer?.backgroundColor = (isHovered ? Palette.tabHover : Palette.tabActive).cgColor
+        fill.update(in: self, accent: accent, hovered: isHovered)
     }
 
     override func mouseDown(with event: NSEvent) { Motion.press(self, scale: 0.95) }

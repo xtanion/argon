@@ -614,54 +614,350 @@ index 6dbc3aeff3..647e89e650 100644
 +_OBJC_METACLASS_$_ACProfile
 +_OBJC_CLASS_$_ACTab
 +_OBJC_METACLASS_$_ACTab
+diff --git a/chrome/browser/extensions/api/tabs/tabs_api.cc b/chrome/browser/extensions/api/tabs/tabs_api.cc
+index 2378fcd5da..4326fa9f4c 100644
+--- a/chrome/browser/extensions/api/tabs/tabs_api.cc
++++ b/chrome/browser/extensions/api/tabs/tabs_api.cc
+@@ -650,9 +650,75 @@ base::ListValue TabsQueryFunction::BuildTabList(
+                         .ToValue());
+     }
+   }
++  AppendExternalTabs(current_browser, last_active_browser, url_patterns,
++                     window_type, window_id, tab_index, result);
+   return result;
+ }
+ 
++void TabsQueryFunction::AppendExternalTabs(
++    BrowserWindowInterface* current_browser,
++    BrowserWindowInterface* last_active_browser,
++    const URLPatternSet& url_patterns,
++    const std::string& window_type,
++    int window_id,
++    int tab_index,
++    base::ListValue& result) {
++  ExtensionTabUtil::ExternalTabsDelegate* delegate =
++      ExtensionTabUtil::GetExternalTabsDelegate();
++  if (!delegate) {
++    return;
++  }
++  if (!window_type.empty() && window_type != "normal") {
++    return;
++  }
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  Profile* incognito_profile =
++      include_incognito_information()
++          ? profile->GetPrimaryOTRProfile(/*create_if_needed=*/false)
++          : nullptr;
++  for (Profile* candidate : {profile, incognito_profile}) {
++    if (!candidate) {
++      continue;
++    }
++    for (const auto& tab : delegate->GetTabs(candidate)) {
++      bool is_current = !current_browser && tab.focused_window;
++      bool is_last_focused = !last_active_browser && tab.focused_window;
++      if (window_id >= 0 && window_id != tab.window_id) {
++        continue;
++      }
++      if (window_id == extension_misc::kCurrentWindowId && !is_current) {
++        continue;
++      }
++      if (!MatchesBool(query_info_.current_window, is_current) ||
++          !MatchesBool(query_info_.last_focused_window, is_last_focused)) {
++        continue;
++      }
++      if (tab_index > -1 && tab.index != tab_index) {
++        continue;
++      }
++      if (!MatchesBool(query_info_.highlighted, tab.active) ||
++          !MatchesBool(query_info_.active, tab.active) ||
++          !MatchesBool(query_info_.pinned, tab.pinned)) {
++        continue;
++      }
++      if (query_info_.group_id.has_value() && *query_info_.group_id != -1) {
++        continue;
++      }
++      if (query_info_.split_view_id.has_value() &&
++          *query_info_.split_view_id != -1) {
++        continue;
++      }
++      if (!MatchesContents(tab.contents, url_patterns)) {
++        continue;
++      }
++      result.Append(CreateTabObjectHelper(tab.contents, extension(),
++                                          source_context_type(), nullptr,
++                                          tab.index)
++                        .ToValue());
++    }
++  }
++}
++
+ bool TabsQueryFunction::MatchesWindow(
+     BrowserWindowInterface* candidate_browser,
+     BrowserWindowInterface* current_browser,
+@@ -762,6 +828,12 @@ bool TabsQueryFunction::MatchesTab(::tabs::TabInterface* candidate_tab,
+     }
+   }
+ 
++  return MatchesContents(web_contents, target_url_patterns);
++}
++
++bool TabsQueryFunction::MatchesContents(
++    content::WebContents* web_contents,
++    const URLPatternSet& target_url_patterns) {
+   auto* audible_helper = RecentlyAudibleHelper::FromWebContents(web_contents);
+   const bool is_audible =
+       audible_helper && audible_helper->WasRecentlyAudible();
+@@ -777,19 +849,22 @@ bool TabsQueryFunction::MatchesTab(::tabs::TabInterface* candidate_tab,
+   // TODO(https://crbug.com/505306735): Add support (or appropriately handle)
+   // tab freezing, discarding, and auto-discarding on desktop android.
+   if (!MatchesBool(query_info_.frozen,
+-                   tab_lifecycle_unit_external->GetTabState() ==
+-                       ::mojom::LifecycleUnitState::FROZEN)) {
++                   tab_lifecycle_unit_external &&
++                       tab_lifecycle_unit_external->GetTabState() ==
++                           ::mojom::LifecycleUnitState::FROZEN)) {
+     return false;
+   }
+ 
+   if (!MatchesBool(query_info_.discarded,
+-                   tab_lifecycle_unit_external->GetTabState() ==
+-                       ::mojom::LifecycleUnitState::DISCARDED)) {
++                   tab_lifecycle_unit_external &&
++                       tab_lifecycle_unit_external->GetTabState() ==
++                           ::mojom::LifecycleUnitState::DISCARDED)) {
+     return false;
+   }
+ 
+   if (!MatchesBool(query_info_.auto_discardable,
+-                   tab_lifecycle_unit_external->IsAutoDiscardable())) {
++                   !tab_lifecycle_unit_external ||
++                       tab_lifecycle_unit_external->IsAutoDiscardable())) {
+     return false;
+   }
+ #endif
+@@ -920,6 +995,24 @@ ExtensionFunction::ResponseAction TabsCreateFunction::Run() {
+     browser = controller->GetBrowserWindowInterface();
+   }
+ 
++  if (!browser) {
++    if (ExtensionTabUtil::ExternalTabsDelegate* delegate =
++            ExtensionTabUtil::GetExternalTabsDelegate()) {
++      if (content::WebContents* contents = delegate->CreateTab(
++              browser_context(),
++              create_properties.window_id.value_or(
++                  extension_misc::kCurrentWindowId),
++              validated_url_, active_.value_or(true), pinned_.value_or(false))) {
++        if (!has_callback()) {
++          return RespondNow(NoArguments());
++        }
++        return RespondNow(ArgumentList(
++            tabs::Create::Results::Create(CreateTabObjectHelper(
++                contents, extension(), source_context_type(), nullptr, -1))));
++      }
++    }
++  }
++
+   // We didn't find a browser. Bail.
+   // TODO(https://crbug.com/468223125): This isn't consistent, since sometimes
+   // we *will* create a new browser below.
+@@ -1393,6 +1486,10 @@ ExtensionFunction::ResponseAction TabsUpdateFunction::Run() {
+     return RespondNow(Error(tabs_constants::kNotAllowedForDevToolsError));
+   }
+ 
++  if (!window && ExtensionTabUtil::GetExternalTab(contents)) {
++    return RespondNow(UpdateExternalTab(*params, contents, tab_id));
++  }
++
+   // GetTabById may return a null window for prerender tabs.
+   if (!window || !ExtensionTabUtil::BrowserSupportsTabs(
+                      window->GetBrowserWindowInterface())) {
+@@ -1519,6 +1616,16 @@ bool TabsUpdateFunction::ComputeDefaultTabId(int& tab_id,
+   const auto* window_controller =
+       ChromeExtensionFunctionDetails(this).GetCurrentWindowController();
+   if (!window_controller) {
++    if (ExtensionTabUtil::ExternalTabsDelegate* delegate =
++            ExtensionTabUtil::GetExternalTabsDelegate()) {
++      for (const auto& tab : delegate->GetTabs(browser_context())) {
++        if (tab.focused_window && tab.active) {
++          contents = tab.contents;
++          tab_id = ExtensionTabUtil::GetTabId(contents);
++          return true;
++        }
++      }
++    }
+     error = ExtensionTabUtil::kNoCurrentWindowError;
+     return false;
+   }
+@@ -1729,6 +1836,29 @@ bool TabsUpdateFunction::UpdateURL(content::WebContents* web_contents,
+   return true;
+ }
+ 
++ExtensionFunction::ResponseValue TabsUpdateFunction::UpdateExternalTab(
++    const api::tabs::Update::Params& params,
++    content::WebContents* contents,
++    int tab_id) {
++  const auto& properties = params.update_properties;
++  if (properties.active.value_or(properties.selected.value_or(false))) {
++    ExtensionTabUtil::GetExternalTabsDelegate()->ActivateTab(contents);
++  }
++  if (properties.muted &&
++      !SetTabAudioMuted(contents, *properties.muted,
++                        TabMutedReason::kExtension, extension()->id())) {
++    return Error(ErrorUtils::FormatErrorMessage(kCannotUpdateMuteCaptured,
++                                                base::NumberToString(tab_id)));
++  }
++  if (properties.url) {
++    std::string error;
++    if (!UpdateURL(contents, *properties.url, tab_id, &error)) {
++      return Error(std::move(error));
++    }
++  }
++  return GetResult(contents);
++}
++
+ ExtensionFunction::ResponseValue TabsUpdateFunction::GetResult(
+     content::WebContents* web_contents) {
+   if (!has_callback()) {
+@@ -2035,7 +2165,7 @@ bool TabsRemoveFunction::RemoveTab(int tab_id, std::string* error) {
+   if (!tabs_util::GetTabById(tab_id, browser_context(),
+                              include_incognito_information(), &window,
+                              &contents, nullptr, error) ||
+-      !window) {
++      (!window && !ExtensionTabUtil::GetExternalTab(contents))) {
+     return false;
+   }
+ 
+@@ -2049,7 +2179,7 @@ bool TabsRemoveFunction::RemoveTab(int tab_id, std::string* error) {
+   }
+ 
+   // Don't let the extension remove a tab if the user is dragging tabs around.
+-  if (!ExtensionTabUtil::IsTabStripEditable(*window->profile())) {
++  if (window && !ExtensionTabUtil::IsTabStripEditable(*window->profile())) {
+     *error = ExtensionTabUtil::kTabStripNotEditableError;
+     return false;
+   }
+diff --git a/chrome/browser/extensions/api/tabs/tabs_api.h b/chrome/browser/extensions/api/tabs/tabs_api.h
+index 85f383edd4..373c99abc0 100644
+--- a/chrome/browser/extensions/api/tabs/tabs_api.h
++++ b/chrome/browser/extensions/api/tabs/tabs_api.h
+@@ -100,6 +100,15 @@ class TabsQueryFunction : public ExtensionFunction {
+ 
+   bool MatchesTab(tabs::TabInterface* candidate_tab,
+                   const URLPatternSet& target_url_patterns);
++  bool MatchesContents(content::WebContents* web_contents,
++                       const URLPatternSet& target_url_patterns);
++  void AppendExternalTabs(BrowserWindowInterface* current_browser,
++                          BrowserWindowInterface* last_active_browser,
++                          const URLPatternSet& url_patterns,
++                          const std::string& window_type,
++                          int window_id,
++                          int tab_index,
++                          base::ListValue& result);
+ 
+   // The query parameters passed by the extension.
+   api::tabs::Query::Params::QueryInfo query_info_;
+@@ -159,6 +168,10 @@ class TabsUpdateFunction : public ExtensionFunction {
+  private:
+   ResponseAction Run() override;
+ 
++  ResponseValue UpdateExternalTab(const api::tabs::Update::Params& params,
++                                  content::WebContents* contents,
++                                  int tab_id);
++
+   // Returns true on success. Out parameters are the ID of the default tab to
+   // update and its web contents, or an error string.
+   bool ComputeDefaultTabId(int& tab_id,
 diff --git a/chrome/browser/extensions/extension_tab_util.cc b/chrome/browser/extensions/extension_tab_util.cc
-index 20c6eaf858..dc5a9f5ba4 100644
+index 20c6eaf858..5f6b73157f 100644
 --- a/chrome/browser/extensions/extension_tab_util.cc
 +++ b/chrome/browser/extensions/extension_tab_util.cc
-@@ -12,6 +12,7 @@
- #include <optional>
- #include <utility>
+@@ -359,8 +359,12 @@ api::tabs::Tab ExtensionTabUtil::CreateTabObject(
+     const Extension* extension,
+     TabListInterface* tab_list,
+     int tab_index) {
+-  if (!tab_list) {
+-    GetTabListInterface(*contents, &tab_list, &tab_index);
++  std::optional<ExternalTabsDelegate::Tab> external;
++  if (!tab_list && !GetTabListInterface(*contents, &tab_list, &tab_index)) {
++    external = GetExternalTab(contents);
++    if (external) {
++      tab_index = external->index;
++    }
+   }
+   api::tabs::Tab tab_object;
+   tab_object.id = GetTabIdForExtensions(*contents);
+@@ -378,6 +382,12 @@ api::tabs::Tab ExtensionTabUtil::CreateTabObject(
+   tab_object.selected = is_active;
+   tab_object.highlighted = tab_interface && tab_interface->IsSelected();
+   tab_object.pinned = tab_interface && tab_interface->IsPinned();
++  if (external) {
++    tab_object.active = external->active;
++    tab_object.selected = external->active;
++    tab_object.highlighted = external->active;
++    tab_object.pinned = external->pinned;
++  }
  
-+#include "base/no_destructor.h"
- #include "base/auto_reset.h"
- #include "base/containers/fixed_flat_set.h"
- #include "base/hash/hash.h"
-@@ -614,6 +615,20 @@ bool ExtensionTabUtil::GetTabStripModel(const WebContents* web_contents,
+   tab_object.group_id = -1;
+   if (tab_interface) {
+@@ -614,6 +624,39 @@ bool ExtensionTabUtil::GetTabStripModel(const WebContents* web_contents,
  }
  #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
  
 +namespace {
 +
-+ExtensionTabUtil::ExternalTabLookup& ExternalTabLookupCallback() {
-+  static base::NoDestructor<ExtensionTabUtil::ExternalTabLookup> lookup;
-+  return *lookup;
-+}
++ExtensionTabUtil::ExternalTabsDelegate* g_external_tabs_delegate = nullptr;
 +
 +}  // namespace
 +
 +// static
-+void ExtensionTabUtil::SetExternalTabLookup(ExternalTabLookup lookup) {
-+  ExternalTabLookupCallback() = std::move(lookup);
++void ExtensionTabUtil::SetExternalTabsDelegate(
++    ExternalTabsDelegate* delegate) {
++  g_external_tabs_delegate = delegate;
++}
++
++// static
++ExtensionTabUtil::ExternalTabsDelegate*
++ExtensionTabUtil::GetExternalTabsDelegate() {
++  return g_external_tabs_delegate;
++}
++
++// static
++std::optional<ExtensionTabUtil::ExternalTabsDelegate::Tab>
++ExtensionTabUtil::GetExternalTab(content::WebContents* contents) {
++  if (!g_external_tabs_delegate || !contents) {
++    return std::nullopt;
++  }
++  for (const auto& tab :
++       g_external_tabs_delegate->GetTabs(contents->GetBrowserContext())) {
++    if (tab.contents == contents) {
++      return tab;
++    }
++  }
++  return std::nullopt;
 +}
 +
  // static
  bool ExtensionTabUtil::GetTabById(int tab_id,
                                    content::BrowserContext* browser_context,
-@@ -672,6 +687,21 @@ bool ExtensionTabUtil::GetTabById(int tab_id,
+@@ -672,6 +715,25 @@ bool ExtensionTabUtil::GetTabById(int tab_id,
      }
    }
  
-+  if (ExternalTabLookupCallback()) {
++  if (g_external_tabs_delegate) {
 +    for (Profile* candidate : {profile, incognito_profile}) {
 +      if (!candidate) {
 +        continue;
 +      }
-+      if (WebContents* external =
-+              ExternalTabLookupCallback().Run(tab_id, candidate)) {
-+        if (out_contents) {
-+          *out_contents = external;
++      for (const auto& tab : g_external_tabs_delegate->GetTabs(candidate)) {
++        if (sessions::SessionTabHelper::IdForTab(tab.contents).id() == tab_id) {
++          if (out_contents) {
++            *out_contents = tab.contents;
++          }
++          if (out_tab_index) {
++            *out_tab_index = tab.index;
++          }
++          return true;
 +        }
-+        return true;
 +      }
 +    }
 +  }
@@ -670,20 +966,59 @@ index 20c6eaf858..dc5a9f5ba4 100644
    // tab id exists as a prerendering tab, and the API will returns
    // `api::tabs::TAB_INDEX_NONE` for `out_tab_index` and a valid `WebContents`.
 diff --git a/chrome/browser/extensions/extension_tab_util.h b/chrome/browser/extensions/extension_tab_util.h
-index 335fa10824..bc982acfa7 100644
+index 335fa10824..d84eb1f0b0 100644
 --- a/chrome/browser/extensions/extension_tab_util.h
 +++ b/chrome/browser/extensions/extension_tab_util.h
-@@ -186,6 +186,14 @@ class ExtensionTabUtil {
+@@ -6,11 +6,13 @@
+ #define CHROME_BROWSER_EXTENSIONS_EXTENSION_TAB_UTIL_H_
+ 
+ #include <memory>
++#include <optional>
+ #include <string>
+ #include <vector>
+ 
+ #include "base/auto_reset.h"
+ #include "base/functional/callback.h"
++#include "base/memory/raw_ptr.h"
+ #include "base/types/expected.h"
+ #include "base/values.h"
+ #include "chrome/browser/extensions/window_controller.h"
+@@ -186,6 +188,39 @@ class ExtensionTabUtil {
                           bool include_incognito,
                           content::WebContents** contents);
  
-+  // Embedders whose tabs live outside any TabStripModel resolve tab ids here.
-+  // The callback returns the WebContents for `tab_id` in `browser_context`, or
-+  // null.
-+  using ExternalTabLookup =
-+      base::RepeatingCallback<content::WebContents*(int tab_id,
-+                                                    content::BrowserContext*)>;
-+  static void SetExternalTabLookup(ExternalTabLookup lookup);
++  // Embedders whose tabs live outside any TabStripModel expose them to the
++  // tabs API through this delegate. Window ids are SessionIDs the embedder
++  // also sets on each tab with SessionTabHelper::SetWindowID.
++  class ExternalTabsDelegate {
++   public:
++    struct Tab {
++      raw_ptr<content::WebContents> contents = nullptr;
++      int window_id = -1;
++      int index = -1;
++      bool active = false;
++      bool pinned = false;
++      bool focused_window = false;
++    };
++
++    virtual ~ExternalTabsDelegate() = default;
++
++    // Every tab in `browser_context`, in window order.
++    virtual std::vector<Tab> GetTabs(content::BrowserContext* browser_context) = 0;
++    // `window_id` may be extension_misc::kCurrentWindowId. Returns null if the
++    // window does not exist.
++    virtual content::WebContents* CreateTab(
++        content::BrowserContext* browser_context,
++        int window_id,
++        const GURL& url,
++        bool active,
++        bool pinned) = 0;
++    virtual void ActivateTab(content::WebContents* contents) = 0;
++  };
++  static void SetExternalTabsDelegate(ExternalTabsDelegate* delegate);
++  static ExternalTabsDelegate* GetExternalTabsDelegate();
++  static std::optional<ExternalTabsDelegate::Tab> GetExternalTab(
++      content::WebContents* contents);
 +
    // Gets the extensions-specific Group ID.
    static int GetGroupId(const tab_groups::TabGroupId& id);

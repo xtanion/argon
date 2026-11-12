@@ -12,6 +12,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class ACProfile;
+@protocol ACExtensionTabsDelegate;
 
 // Process-wide entry point into the engine. Only valid on the main thread,
 // after ACApplicationDelegate.applicationDidStart.
@@ -27,6 +28,9 @@ NS_SWIFT_NAME(Application)
 
 // Profiles currently loaded in this process.
 @property(readonly) NSArray<ACProfile*>* loadedProfiles;
+
+// Supplies the windows and tabs extensions see through chrome.tabs.
+@property(weak, nullable) id<ACExtensionTabsDelegate> extensionTabsDelegate;
 
 // Loads the profile stored in `identifier` (a directory name inside the user
 // data directory), creating it on first use.

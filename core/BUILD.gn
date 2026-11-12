@@ -29,6 +29,7 @@ source_set("core") {
     "public/ACApplication.h",
     "public/ACAutocomplete.h",
     "public/ACDownload.h",
+    "public/ACExtensionTabs.h",
     "public/ACExport.h",
     "public/ACMain.h",
     "public/ACProfile.h",

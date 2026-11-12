@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, ApplicationDelegate {
             NSApp.mainMenu = MainMenu.build()
             let controller = BrowserWindowController(spaces: loaded, activeIndex: state.activeSpace)
             self.controller = controller
+            application.extensionTabsDelegate = controller
             controller.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
             if !self.pendingURLs.isEmpty {

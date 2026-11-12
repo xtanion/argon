@@ -8,6 +8,7 @@
 #import "ACApplication.h"
 #import "ACAutocomplete.h"
 #import "ACDownload.h"
+#import "ACExtensionTabs.h"
 #import "ACMain.h"
 #import "ACProfile.h"
 #import "ACTab.h"

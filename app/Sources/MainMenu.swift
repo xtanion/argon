@@ -6,6 +6,8 @@ enum MainMenu {
         let main = NSMenu()
 
         main.addSubmenu("Argon") { menu in
+            menu.addItem(ClosureMenuItem("Check for Updates...") { UpdatePrompt.checkNow() })
+            menu.addItem(.separator())
             menu.addItem(withTitle: "Settings...", action: #selector(BrowserWindowController.openSettings(_:)), keyEquivalent: ",")
             menu.addItem(.separator())
             menu.addItem(withTitle: "Hide Argon", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")

@@ -38,6 +38,12 @@ final class GeneralSettingsPane: SettingsPane {
                         badge: SettingsStyle.badge("camera.viewfinder", color: .systemPurple), accessory: folderPopUp),
         ])
 
+        let updates = SettingsCard([
+            SettingsRow(title: "Check for updates automatically", subtitle: "Argon looks for new releases on GitHub every few hours.",
+                        badge: SettingsStyle.badge("arrow.down.circle.fill", color: .systemTeal),
+                        accessory: SettingsSwitch(isOn: Preferences.checkForUpdates) { Preferences.checkForUpdates = $0 }),
+        ])
+
         let profile = SettingsCard([
             SettingsRow(title: "Search engine, passwords, site settings and downloads are set per profile.",
                         badge: SettingsStyle.badge("person.crop.circle.fill", color: .systemGreen),
@@ -45,7 +51,7 @@ final class GeneralSettingsPane: SettingsPane {
                         wraps: true),
         ])
 
-        let column = NSStackView.settingsColumn([chip, quitting, media, capture, profile])
+        let column = NSStackView.settingsColumn([chip, quitting, updates, media, capture, profile])
         column.setCustomSpacing(20, after: chip)
         view.pinCentered(column, width: SettingsStyle.width, top: contentInset)
 

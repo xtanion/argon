@@ -6,6 +6,15 @@ enum Preferences {
     private static let showSidebarOnLaunchKey = "ArgonShowSidebarOnLaunch"
     private static let screenshotFolderKey = "ArgonScreenshotFolder"
     private static let autoPictureInPictureKey = "ArgonAutoPictureInPicture"
+    private static let checkForUpdatesKey = "ArgonCheckForUpdates"
+
+    static var checkForUpdates: Bool {
+        get { UserDefaults.standard.object(forKey: checkForUpdatesKey) as? Bool ?? true }
+        set {
+            UserDefaults.standard.set(newValue, forKey: checkForUpdatesKey)
+            BackgroundWorker.shared.reschedule()
+        }
+    }
 
     static var autoPictureInPicture: Bool {
         get { UserDefaults.standard.object(forKey: autoPictureInPictureKey) as? Bool ?? true }

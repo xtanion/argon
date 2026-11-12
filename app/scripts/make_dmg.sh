@@ -29,4 +29,3 @@ create-dmg \
   --no-internet-enable \
   "$OUT" "$WORK/src"
 
-codesign -f -s - "$OUT"

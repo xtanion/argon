@@ -27,7 +27,11 @@
 #include "content/public/browser/keyboard_event_processing_result.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
+#include "chrome/browser/extensions/api/web_navigation/web_navigation_tab_observer.h"
+#include "chrome/browser/extensions/navigation_extension_enabler.h"
+#include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/ui/tab_helpers.h"
+#include "extensions/browser/view_type_utils.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "components/permissions/permission_request_manager.h"
@@ -105,6 +109,15 @@ ACTabHost::ACTabHost(ACTab* owner,
   find_in_page::FindTabHelper::FromWebContents(contents_.get())
       ->AddObserver(this);
   printing::InitializePrintingForWebContents(contents_.get());
+  if (extensions::GetViewType(contents_.get()) ==
+      extensions::mojom::ViewType::kInvalid) {
+    extensions::SetViewType(contents_.get(),
+                            extensions::mojom::ViewType::kTabContents);
+  }
+  extensions::WebNavigationTabObserver::CreateForWebContents(contents_.get());
+  extensions::TabHelper::CreateForWebContents(contents_.get());
+  navigation_extension_enabler_ =
+      std::make_unique<extensions::NavigationExtensionEnabler>(contents_.get());
   favicon::ContentFaviconDriver::FromWebContents(contents_.get())
       ->AddObserver(this);
 

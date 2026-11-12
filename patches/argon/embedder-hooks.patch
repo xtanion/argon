@@ -614,3 +614,77 @@ index 6dbc3aeff3..647e89e650 100644
 +_OBJC_METACLASS_$_ACProfile
 +_OBJC_CLASS_$_ACTab
 +_OBJC_METACLASS_$_ACTab
+diff --git a/chrome/browser/extensions/extension_tab_util.cc b/chrome/browser/extensions/extension_tab_util.cc
+index 20c6eaf858..dc5a9f5ba4 100644
+--- a/chrome/browser/extensions/extension_tab_util.cc
++++ b/chrome/browser/extensions/extension_tab_util.cc
+@@ -12,6 +12,7 @@
+ #include <optional>
+ #include <utility>
+ 
++#include "base/no_destructor.h"
+ #include "base/auto_reset.h"
+ #include "base/containers/fixed_flat_set.h"
+ #include "base/hash/hash.h"
+@@ -614,6 +615,20 @@ bool ExtensionTabUtil::GetTabStripModel(const WebContents* web_contents,
+ }
+ #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+ 
++namespace {
++
++ExtensionTabUtil::ExternalTabLookup& ExternalTabLookupCallback() {
++  static base::NoDestructor<ExtensionTabUtil::ExternalTabLookup> lookup;
++  return *lookup;
++}
++
++}  // namespace
++
++// static
++void ExtensionTabUtil::SetExternalTabLookup(ExternalTabLookup lookup) {
++  ExternalTabLookupCallback() = std::move(lookup);
++}
++
+ // static
+ bool ExtensionTabUtil::GetTabById(int tab_id,
+                                   content::BrowserContext* browser_context,
+@@ -672,6 +687,21 @@ bool ExtensionTabUtil::GetTabById(int tab_id,
+     }
+   }
+ 
++  if (ExternalTabLookupCallback()) {
++    for (Profile* candidate : {profile, incognito_profile}) {
++      if (!candidate) {
++        continue;
++      }
++      if (WebContents* external =
++              ExternalTabLookupCallback().Run(tab_id, candidate)) {
++        if (out_contents) {
++          *out_contents = external;
++        }
++        return true;
++      }
++    }
++  }
++
+   // Prerendering tab is not visible and it cannot be in `TabStripModel`, if the
+   // tab id exists as a prerendering tab, and the API will returns
+   // `api::tabs::TAB_INDEX_NONE` for `out_tab_index` and a valid `WebContents`.
+diff --git a/chrome/browser/extensions/extension_tab_util.h b/chrome/browser/extensions/extension_tab_util.h
+index 335fa10824..bc982acfa7 100644
+--- a/chrome/browser/extensions/extension_tab_util.h
++++ b/chrome/browser/extensions/extension_tab_util.h
+@@ -186,6 +186,14 @@ class ExtensionTabUtil {
+                          bool include_incognito,
+                          content::WebContents** contents);
+ 
++  // Embedders whose tabs live outside any TabStripModel resolve tab ids here.
++  // The callback returns the WebContents for `tab_id` in `browser_context`, or
++  // null.
++  using ExternalTabLookup =
++      base::RepeatingCallback<content::WebContents*(int tab_id,
++                                                    content::BrowserContext*)>;
++  static void SetExternalTabLookup(ExternalTabLookup lookup);
++
+   // Gets the extensions-specific Group ID.
+   static int GetGroupId(const tab_groups::TabGroupId& id);
+ 

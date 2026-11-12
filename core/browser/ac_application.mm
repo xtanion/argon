@@ -11,6 +11,9 @@
 #include <memory>
 
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
+#include "base/path_service.h"
+#include "base/task/thread_pool.h"
 #include "base/functional/bind.h"
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/browser_process.h"
@@ -20,6 +23,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_observer.h"
+#include "chrome/common/chrome_paths.h"
 #include "chrome/common/pref_names.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
@@ -48,6 +52,38 @@ void HandleOpenURLs(id self, SEL _cmd, NSApplication* app, NSArray<NSURL*>* urls
     return;
   }
   DeliverURLs(urls);
+}
+
+// Apple Passwords' browser extension talks to a native helper whose manifest
+// macOS installs only for Chrome and Firefox; Chromium looks in its own folder.
+void InstallApplePasswordsHost() {
+  base::FilePath dir;
+  if (!base::PathService::Get(chrome::DIR_USER_NATIVE_MESSAGING, &dir)) {
+    return;
+  }
+  base::ThreadPool::PostTask(
+      FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
+      base::BindOnce(
+          [](const base::FilePath& dir) {
+            const base::FilePath name("com.apple.passwordmanager.json");
+            const base::FilePath source =
+                base::FilePath("/Library/Google/Chrome/NativeMessagingHosts")
+                    .Append(name);
+            std::string contents;
+            if (!base::ReadFileToString(source, &contents)) {
+              return;
+            }
+            const base::FilePath target = dir.Append(name);
+            std::string existing;
+            if (base::ReadFileToString(target, &existing) &&
+                existing == contents) {
+              return;
+            }
+            if (base::CreateDirectory(dir)) {
+              base::WriteFile(target, contents);
+            }
+          },
+          dir));
 }
 
 BOOL HandleReopen(id self, SEL _cmd, NSApplication* app, BOOL hasVisibleWindows) {
@@ -116,6 +152,8 @@ void InterceptOpenURLs() {
       KeepAliveOrigin::APP_CONTROLLER, KeepAliveRestartOption::DISABLED);
   DisableProfilePicker();
   InterceptReopen();
+  InstallApplePasswordsHost();
+  argon_core::RegisterTabsWithExtensions();
   // Chromium posts this once quitting is decided; the main loop only exits
   // after every keep-alive is gone, so holding ours past it hangs the quit.
   __weak ACApplication* weakSelf = self;

@@ -9,7 +9,10 @@
 #include <memory>
 
 #include "base/strings/sys_string_conversions.h"
+#include "base/functional/bind.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/extensions/extension_tab_util.h"
+#include "components/sessions/content/session_tab_helper.h"
 #include "chrome/browser/printing/print_view_manager_common.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
@@ -58,6 +61,21 @@ NSHashTable<ACTab*>* LiveTabs() {
 }  // namespace
 
 namespace argon_core {
+
+void RegisterTabsWithExtensions() {
+  extensions::ExtensionTabUtil::SetExternalTabLookup(base::BindRepeating(
+      [](int tab_id,
+         content::BrowserContext* context) -> content::WebContents* {
+        for (ACTab* tab in LiveTabs().allObjects) {
+          content::WebContents* contents = tab.webContents;
+          if (contents && contents->GetBrowserContext() == context &&
+              sessions::SessionTabHelper::IdForTab(contents).id() == tab_id) {
+            return contents;
+          }
+        }
+        return nullptr;
+      }));
+}
 
 void CloseAllTabs() {
   for (ACTab* tab in LiveTabs().allObjects) {

@@ -26,6 +26,10 @@
 
 @class ACTab;
 
+namespace extensions {
+class NavigationExtensionEnabler;
+}
+
 namespace argon_core {
 
 // Owns a tab's WebContents and forwards its events to the Obj-C ACTab.
@@ -173,6 +177,8 @@ class ACTabHost : public content::WebContentsDelegate,
   std::optional<content::WebContents::ScopedIgnoreInputEvents>
       devtools_input_block_;
   std::unique_ptr<content::WebContents> contents_;
+  std::unique_ptr<extensions::NavigationExtensionEnabler>
+      navigation_extension_enabler_;
   bool fullscreen_ = false;
   MediaState media_;
   mojo::Receiver<media_session::mojom::MediaSessionObserver> media_receiver_{

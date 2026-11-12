@@ -15,15 +15,21 @@ final class ThemeEditorController: NSViewController, NSTextFieldDelegate {
     private static let inset: CGFloat = 16
 
     var onChange: ((NSColor?) -> Void)?
+    var onOpacityChange: ((Double) -> Void)?
 
     private var color: NSColor?
+    private let opacity: Double
     private var swatches: [SwatchView] = []
     private let titleLabel = NSTextField.sidebarLabel("Theme", font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
     private let hexField = NSTextField()
     private let resetButton = NSButton(title: "Reset", target: nil, action: nil)
+    private let opacityLabel = NSTextField.sidebarLabel("Opacity", font: .systemFont(ofSize: 12, weight: .medium), color: .labelColor)
+    private let opacityValue = NSTextField.sidebarLabel("", font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular), color: .secondaryLabelColor)
+    private let opacitySlider = WaveSlider()
 
-    init(color: NSColor?) {
+    init(color: NSColor?, opacity: Double = 1) {
         self.color = color
+        self.opacity = opacity
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -37,7 +43,10 @@ final class ThemeEditorController: NSViewController, NSTextFieldDelegate {
         let gridTop: CGFloat = 42
         let gridBottom = gridTop + CGFloat(rows) * size + CGFloat(rows - 1) * gap
         let footerY = gridBottom + gap + 6
-        let view = FlippedView(frame: NSRect(x: 0, y: 0, width: gridWidth + 2 * inset, height: footerY + 24 + inset))
+        let opacityY = footerY + 24 + 16
+        let sliderY = opacityY + 18
+        let sliderHeight: CGFloat = 40
+        let view = FlippedView(frame: NSRect(x: 0, y: 0, width: gridWidth + 2 * inset, height: sliderY + sliderHeight + inset - 6))
 
         titleLabel.frame = NSRect(x: inset, y: 14, width: gridWidth, height: 18)
         view.addSubview(titleLabel)
@@ -72,6 +81,23 @@ final class ThemeEditorController: NSViewController, NSTextFieldDelegate {
 
         view.addSubview(hexField)
         view.addSubview(resetButton)
+
+        opacityLabel.frame = NSRect(x: inset, y: opacityY, width: gridWidth / 2, height: 16)
+        opacityValue.alignment = .right
+        opacityValue.frame = NSRect(x: inset + gridWidth / 2, y: opacityY, width: gridWidth / 2, height: 16)
+        opacitySlider.frame = NSRect(x: inset, y: sliderY, width: gridWidth, height: sliderHeight)
+        opacitySlider.minValue = Palette.minimumOpacity
+        opacitySlider.maxValue = 1
+        opacitySlider.label = "Opacity"
+        opacitySlider.setValue(opacity)
+        opacitySlider.onChange = { [weak self] value in
+            self?.showOpacity(value)
+            self?.onOpacityChange?(value)
+        }
+        showOpacity(opacity)
+        view.addSubview(opacityLabel)
+        view.addSubview(opacityValue)
+        view.addSubview(opacitySlider)
         self.view = view
         refresh()
     }
@@ -98,6 +124,10 @@ final class ThemeEditorController: NSViewController, NSTextFieldDelegate {
     }
 
     @objc private func reset() { apply(nil) }
+
+    private func showOpacity(_ value: Double) {
+        opacityValue.stringValue = "\(Int((value * 100).rounded()))%"
+    }
 
     private func refresh() {
         let hex = color?.hexString

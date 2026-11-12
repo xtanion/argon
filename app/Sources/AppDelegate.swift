@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, ApplicationDelegate {
             let space = Space(name: saved.name, symbol: saved.symbol, hue: saved.hue, profileIdentifier: saved.profile)
             space.intensity = saved.intensity ?? Palette.defaultIntensity
             space.customColor = saved.color.flatMap { NSColor(hex: $0) }
+            space.opacity = min(max(saved.opacity ?? 1, Palette.minimumOpacity), 1)
             space.pinned = Self.restore(saved.pinned ?? [])
             space.pinnedCollapsed = saved.pinnedCollapsed ?? false
             space.tabs = saved.tabs.map { saved in

@@ -211,6 +211,7 @@ final class Space {
     var hue: Double
     var intensity = Palette.defaultIntensity
     var customColor: NSColor?
+    var opacity = 1.0
     var profileIdentifier: String
     var profile: Profile? {
         didSet { if let profile { DownloadCenter.shared.track(profile) } }
@@ -357,6 +358,7 @@ struct SavedState: Codable, Sendable {
         var tabs: [SavedTab]
         var active: Int?
         var pinnedCollapsed: Bool? = nil
+        var opacity: Double? = nil
     }
 
     var spaces: [SavedSpace]

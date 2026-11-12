@@ -86,6 +86,7 @@ enum Palette {
     static let placeholder = dynamic(dark: NSColor(white: 1, alpha: CGFloat(0x2A) / 255)) { NSColor(white: 0, alpha: CGFloat(0x0F) / 255) }
 
     static let defaultIntensity = 0.3
+    static let minimumOpacity = 0.1
 
     // Flattens a translucent palette color onto `base`, for surfaces drawn over page content.
     static func opaque(_ overlay: NSColor, on base: NSColor, appearance: NSAppearance) -> NSColor {

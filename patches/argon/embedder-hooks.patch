@@ -109,28 +109,6 @@ index 6ea55af3da..c8cdb83528 100644
    content::ContentGpuClient* CreateContentGpuClient() override;
    content::ContentRendererClient* CreateContentRendererClient() override;
    content::ContentUtilityClient* CreateContentUtilityClient() override;
-diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 37c881f5d2..d6dd1f6443 100644
---- a/chrome/app/framework.exports
-+++ b/chrome/app/framework.exports
-@@ -19,3 +19,17 @@
- _ChromeAppModeStart_v8
- _ChromeMain
- _ChromeWebAppShortcutCopierMain
-+
-+_ACMain
-+_OBJC_CLASS_$_ACApplication
-+_OBJC_CLASS_$_ACAutocomplete
-+_OBJC_CLASS_$_ACAutocompleteMatch
-+_OBJC_CLASS_$_ACDownload
-+_OBJC_CLASS_$_ACProfile
-+_OBJC_CLASS_$_ACTab
-+_OBJC_METACLASS_$_ACApplication
-+_OBJC_METACLASS_$_ACAutocomplete
-+_OBJC_METACLASS_$_ACAutocompleteMatch
-+_OBJC_METACLASS_$_ACDownload
-+_OBJC_METACLASS_$_ACProfile
-+_OBJC_METACLASS_$_ACTab
 diff --git a/chrome/browser/app_controller_mac.mm b/chrome/browser/app_controller_mac.mm
 index ead883ef95..35a5afaef0 100644
 --- a/chrome/browser/app_controller_mac.mm
@@ -591,29 +569,6 @@ index 02db68344e..0305b2d804 100644
  
    // Everything happens upon show.
  }
-diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index 6dbc3aeff3..647e89e650 100644
---- a/chrome/app/framework.order
-+++ b/chrome/app/framework.order
-@@ -31,3 +31,18 @@ _ChromeWebAppShortcutCopierMain
- 
- # _ChromeMain must be listed last.  That's the whole point of this file.
- _ChromeMain
-+
-+# Argon embedder API, exported after the Chrome entry points.
-+_ACMain
-+_OBJC_CLASS_$_ACApplication
-+_OBJC_METACLASS_$_ACApplication
-+_OBJC_CLASS_$_ACAutocompleteMatch
-+_OBJC_METACLASS_$_ACAutocompleteMatch
-+_OBJC_CLASS_$_ACAutocomplete
-+_OBJC_METACLASS_$_ACAutocomplete
-+_OBJC_CLASS_$_ACDownload
-+_OBJC_METACLASS_$_ACDownload
-+_OBJC_CLASS_$_ACProfile
-+_OBJC_METACLASS_$_ACProfile
-+_OBJC_CLASS_$_ACTab
-+_OBJC_METACLASS_$_ACTab
 diff --git a/chrome/browser/extensions/api/tabs/tabs_api.cc b/chrome/browser/extensions/api/tabs/tabs_api.cc
 index 2378fcd5da..4326fa9f4c 100644
 --- a/chrome/browser/extensions/api/tabs/tabs_api.cc
@@ -1068,3 +1023,52 @@ index 2b03bda160..2c44c5e7d6 100644
 +    ExternalPasswordsClientUIDelegateLookup lookup);
 +
  #endif  // CHROME_BROWSER_UI_PASSWORDS_PASSWORDS_CLIENT_UI_DELEGATE_H_
+diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
+index 37c881f5d2..6bbe96aa5e 100644
+--- a/chrome/app/framework.exports
++++ b/chrome/app/framework.exports
+@@ -19,3 +19,19 @@
+ _ChromeAppModeStart_v8
+ _ChromeMain
+ _ChromeWebAppShortcutCopierMain
++
++_ACMain
++_OBJC_CLASS_$_ACApplication
++_OBJC_CLASS_$_ACAutocomplete
++_OBJC_CLASS_$_ACAutocompleteMatch
++_OBJC_CLASS_$_ACDownload
++_OBJC_CLASS_$_ACExtensionWindow
++_OBJC_CLASS_$_ACProfile
++_OBJC_CLASS_$_ACTab
++_OBJC_METACLASS_$_ACApplication
++_OBJC_METACLASS_$_ACAutocomplete
++_OBJC_METACLASS_$_ACAutocompleteMatch
++_OBJC_METACLASS_$_ACDownload
++_OBJC_METACLASS_$_ACExtensionWindow
++_OBJC_METACLASS_$_ACProfile
++_OBJC_METACLASS_$_ACTab
+diff --git a/chrome/app/framework.order b/chrome/app/framework.order
+index 6dbc3aeff3..b49fb07896 100644
+--- a/chrome/app/framework.order
++++ b/chrome/app/framework.order
+@@ -31,3 +31,20 @@ _ChromeWebAppShortcutCopierMain
+ 
+ # _ChromeMain must be listed last.  That's the whole point of this file.
+ _ChromeMain
++
++# Argon embedder API, exported after the Chrome entry points.
++_ACMain
++_OBJC_CLASS_$_ACApplication
++_OBJC_METACLASS_$_ACApplication
++_OBJC_CLASS_$_ACAutocompleteMatch
++_OBJC_METACLASS_$_ACAutocompleteMatch
++_OBJC_CLASS_$_ACAutocomplete
++_OBJC_METACLASS_$_ACAutocomplete
++_OBJC_CLASS_$_ACDownload
++_OBJC_METACLASS_$_ACDownload
++_OBJC_CLASS_$_ACExtensionWindow
++_OBJC_METACLASS_$_ACExtensionWindow
++_OBJC_CLASS_$_ACProfile
++_OBJC_METACLASS_$_ACProfile
++_OBJC_CLASS_$_ACTab
++_OBJC_METACLASS_$_ACTab

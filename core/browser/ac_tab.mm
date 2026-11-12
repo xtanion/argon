@@ -584,6 +584,12 @@ void CloseAllTabs() {
 
 @implementation ACExtensionWindow
 
+@synthesize key = _key;
+@synthesize tabs = _tabs;
+@synthesize activeTab = _activeTab;
+@synthesize pinnedTabs = _pinnedTabs;
+@synthesize focused = _focused;
+
 - (instancetype)initWithKey:(id)key
                        tabs:(NSArray<ACTab*>*)tabs
                   activeTab:(ACTab*)activeTab

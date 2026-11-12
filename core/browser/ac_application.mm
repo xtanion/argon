@@ -136,6 +136,8 @@ void InterceptOpenURLs() {
   std::map<Profile*, ACProfile*> _profiles;
 }
 
+@synthesize extensionTabsDelegate = _extensionTabsDelegate;
+
 + (ACApplication*)sharedApplication {
   CHECK(g_application);
   return g_application;

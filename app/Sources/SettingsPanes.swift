@@ -408,12 +408,13 @@ final class SpacesSettingsPane: SettingsPane, NSTextFieldDelegate {
 
     private func showThemeEditor() {
         guard let space = selectedSpace, let index = list.selectedIndex else { return }
-        let editor = ThemeEditorController(color: space.customColor)
+        let editor = ThemeEditorController(color: space.customColor, opacity: space.opacity)
         editor.onChange = { [weak self] color in
             self?.browser?.setColor(color, forSpace: index)
             self?.reloadList()
             self?.refreshDetail()
         }
+        editor.onOpacityChange = { [weak self] opacity in self?.browser?.setOpacity(opacity, forSpace: index) }
         present(editor, relativeTo: themeButton)
     }
 

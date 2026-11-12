@@ -11,6 +11,14 @@ final class BrowserWindow: NSWindow {
     }
     var trafficLightsHidden = false { didSet { if trafficLightsHidden != oldValue { positionTrafficLights() } } }
     var trafficLightOffset: NSPoint = .zero { didSet { if trafficLightOffset != oldValue { positionTrafficLights() } } }
+    var isTranslucent = false {
+        didSet {
+            guard isTranslucent != oldValue else { return }
+            isOpaque = !isTranslucent
+            backgroundColor = isTranslucent ? .clear : .windowBackgroundColor
+            invalidateShadow()
+        }
+    }
 
     init() {
         super.init(
@@ -64,6 +72,8 @@ final class BrowserWindow: NSWindow {
 final class ContentCardView: NSView {
     private(set) var pageView: NSView?
     var isFullBleed = false { didSet { updateLayer() } }
+    // Set while the frame is translucent, so the empty card stays solid instead of showing the desktop.
+    var solidBase: NSColor? { didSet { if solidBase != oldValue { updateLayer() } } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -81,7 +91,11 @@ final class ContentCardView: NSView {
 
     override func updateLayer() {
         layer?.cornerRadius = isFullBleed ? 0 : Metrics.cardRadius
-        layer?.backgroundColor = Palette.placeholder.cgColor
+        if let solidBase {
+            layer?.backgroundColor = Palette.opaque(Palette.placeholder, on: solidBase, appearance: effectiveAppearance).cgColor
+        } else {
+            layer?.backgroundColor = Palette.placeholder.cgColor
+        }
     }
 
     func show(_ view: NSView?) {
@@ -93,6 +107,48 @@ final class ContentCardView: NSView {
         view.autoresizingMask = [.width, .height]
         view.frame = bounds
         addSubview(view, positioned: .below, relativeTo: nil)
+    }
+}
+
+// Paints the frame color behind everything, over a behind-window blur when translucent.
+@MainActor
+final class FrameBackdropView: NSView {
+    private let tint = NSView()
+    private var blur: NSVisualEffectView?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        tint.wantsLayer = true
+        tint.frame = bounds
+        tint.autoresizingMask = [.width, .height]
+        addSubview(tint)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    var tintColor: CGColor? {
+        get { tint.layer?.backgroundColor }
+        set { tint.layer?.backgroundColor = newValue }
+    }
+
+    var blursBehindWindow = false {
+        didSet {
+            guard blursBehindWindow != oldValue else { return }
+            if blursBehindWindow, blur == nil {
+                let view = NSVisualEffectView(frame: bounds)
+                view.autoresizingMask = [.width, .height]
+                view.blendingMode = .behindWindow
+                view.material = .underWindowBackground
+                view.state = .active
+                addSubview(view, positioned: .below, relativeTo: tint)
+                blur = view
+            }
+            blur?.isHidden = !blursBehindWindow
+        }
     }
 }
 
@@ -153,6 +209,7 @@ final class TrackingRegionView: NSView {
 final class RootView: NSView {
     let sidebar = SidebarView()
     let card = ContentCardView()
+    private let backdrop = FrameBackdropView()
     let resizeHandle = SidebarResizeHandle()
     private let edgeTracker = TrackingRegionView()
     private let peekTracker = TrackingRegionView(assumeInside: true)
@@ -181,12 +238,15 @@ final class RootView: NSView {
     private var dockTicker: FrameTicker?
     var contentFullscreen = false { didSet { needsLayout = true; card.isFullBleed = contentFullscreen } }
     private(set) var frameColor: NSColor = Palette.ink
+    private(set) var frameOpacity: CGFloat = 1
+    private var shownOpacity: CGFloat = 1
     private var toast: ToastView?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = frameColor.cgColor
+        backdrop.tintColor = frameColor.cgColor
+        addSubview(backdrop)
         addSubview(card)
         addSubview(sidebar)
         addSubview(resizeHandle)
@@ -206,8 +266,9 @@ final class RootView: NSView {
 
     override var isFlipped: Bool { true }
 
-    func setFrameColor(_ color: NSColor, animated: Bool = true) {
+    func setFrameColor(_ color: NSColor, opacity: CGFloat = 1, animated: Bool = true) {
         frameColor = color
+        frameOpacity = min(max(opacity, Palette.minimumOpacity), 1)
         Palette.frameIsVeryLight = color.relativeLuminance > 0.85
         if let window {
             let name: NSAppearance.Name = color.isDarkFrame ? .darkAqua : .aqua
@@ -218,19 +279,39 @@ final class RootView: NSView {
         CATransaction.begin()
         CATransaction.setAnimationDuration(animated && !Motion.reduced ? 0.25 : 0)
         CATransaction.setDisableActions(!animated || Motion.reduced)
-        layer?.backgroundColor = color.cgColor
+        // Stay translucent until a fade back to opaque has finished.
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated { self?.updateTranslucency() }
+        }
+        applyTint(color, opacity: frameOpacity)
         toast?.fillColor = toastFill
         if sidebarPeeking { sidebar.layer?.backgroundColor = color.cgColor }
         CATransaction.commit()
     }
 
     // Cheap per-frame tint used while a space swipe is in flight; setFrameColor applies it fully.
-    func previewFrameColor(_ color: NSColor) {
+    func previewFrameColor(_ color: NSColor, opacity: CGFloat = 1) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer?.backgroundColor = color.cgColor
+        applyTint(color, opacity: min(max(opacity, Palette.minimumOpacity), 1))
         if sidebarPeeking { sidebar.layer?.backgroundColor = color.cgColor }
         CATransaction.commit()
+    }
+
+    private func applyTint(_ color: NSColor, opacity: CGFloat) {
+        shownOpacity = opacity
+        if opacity < 1 { setTranslucent(true) }
+        backdrop.tintColor = opacity < 1 ? color.withAlphaComponent(opacity).cgColor : color.cgColor
+        card.solidBase = opacity < 1 ? color : nil
+    }
+
+    private func updateTranslucency() {
+        if shownOpacity >= 1 { setTranslucent(false) }
+    }
+
+    private func setTranslucent(_ translucent: Bool) {
+        backdrop.blursBehindWindow = translucent
+        (window as? BrowserWindow)?.isTranslucent = translucent
     }
 
     override func layout() {
@@ -244,6 +325,7 @@ final class RootView: NSView {
         peekTracker.isHidden = !sidebarPeeking
         let floating = NSRect(x: inset, y: inset, width: w, height: h - 2 * inset)
         let fullCard = bounds.insetBy(dx: inset, dy: inset)
+        backdrop.frame = bounds
         if contentFullscreen {
             card.frame = bounds
         } else if sidebarPeeking {
@@ -414,6 +496,7 @@ final class RootView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        (window as? BrowserWindow)?.isTranslucent = shownOpacity < 1
         updateChrome()
     }
 }

@@ -34,7 +34,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         }
         showActiveTab()
         refreshSidebar()
-        root.setFrameColor(activeSpace.frameColor, animated: false)
+        applyFrame(animated: false)
         NotificationCenter.default.addObserver(self, selector: #selector(downloadsChanged(_:)), name: .downloadsDidChange, object: nil)
     }
 
@@ -224,7 +224,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         guard spaces.indices.contains(index) else { return }
         let from = activeSpace.frameColor.usingColorSpace(.sRGB) ?? activeSpace.frameColor
         let to = spaces[index].frameColor.usingColorSpace(.sRGB) ?? spaces[index].frameColor
-        root.previewFrameColor(from.blended(withFraction: min(max(progress, 0), 1), of: to) ?? from)
+        let t = min(max(progress, 0), 1)
+        let opacity = activeSpace.opacity + (spaces[index].opacity - activeSpace.opacity) * Double(t)
+        root.previewFrameColor(from.blended(withFraction: t, of: to) ?? from, opacity: CGFloat(opacity))
     }
 
     func finishSpaceSwipe(to index: Int?) {
@@ -233,7 +235,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             showActiveTab()
             scheduleSave()
         } else {
-            root.setFrameColor(activeSpace.frameColor)
+            applyFrame()
         }
         refreshSidebar()
     }
@@ -263,7 +265,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         displayedTab = nil
         root.card.show(nil)
         activeIndex = index
-        root.setFrameColor(activeSpace.frameColor)
+        applyFrame()
     }
 
     @objc func newSpace(_ sender: Any?) {
@@ -344,7 +346,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
                 (sharesProfile ? space.pinnedTabs + space.tabs : space.allTabs).forEach { $0.close() }
                 self.spaces.remove(at: index)
                 if self.activeIndex > index { self.activeIndex -= 1 }
-                self.root.setFrameColor(self.activeSpace.frameColor)
+                self.applyFrame()
                 self.showActiveTab()
                 self.refreshSidebar()
                 self.scheduleSave()
@@ -363,16 +365,30 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     func setColor(_ color: NSColor?, forSpace index: Int) {
         guard spaces.indices.contains(index) else { return }
         spaces[index].customColor = color
-        if index == activeIndex { root.setFrameColor(activeSpace.frameColor) }
+        if index == activeIndex { applyFrame() }
         root.commandBar?.frameColor = activeSpace.frameColor
         scheduleSave()
+    }
+
+    func setOpacity(_ opacity: Double, forSpace index: Int) {
+        guard spaces.indices.contains(index) else { return }
+        let opacity = min(max(opacity, Palette.minimumOpacity), 1)
+        guard spaces[index].opacity != opacity else { return }
+        spaces[index].opacity = opacity
+        if index == activeIndex { applyFrame(animated: false) }
+        scheduleSave()
+    }
+
+    private func applyFrame(animated: Bool = true) {
+        root.setFrameColor(activeSpace.frameColor, opacity: CGFloat(activeSpace.opacity), animated: animated)
     }
 
     func showThemeEditor(forSpace index: Int, relativeTo view: NSView) {
         guard spaces.indices.contains(index) else { return }
         if index != activeIndex { selectSpace(index) }
-        let editor = ThemeEditorController(color: spaces[index].customColor)
+        let editor = ThemeEditorController(color: spaces[index].customColor, opacity: spaces[index].opacity)
         editor.onChange = { [weak self] color in self?.setColor(color, forSpace: index) }
+        editor.onOpacityChange = { [weak self] opacity in self?.setOpacity(opacity, forSpace: index) }
         let popover = NSPopover()
         popover.contentViewController = editor
         popover.behavior = .transient
@@ -1051,7 +1067,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
                     active: space.activeTab.flatMap { active in
                         (space.pinnedTabs + space.tabs.filter { $0.url != nil }).firstIndex { $0 === active }
                     },
-                    pinnedCollapsed: space.pinnedCollapsed
+                    pinnedCollapsed: space.pinnedCollapsed,
+                    opacity: space.opacity < 1 ? space.opacity : nil
                 )
             },
             activeSpace: activeIndex,

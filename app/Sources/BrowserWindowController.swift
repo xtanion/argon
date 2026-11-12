@@ -22,6 +22,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         super.init(window: window)
         window.delegate = self
         root.sidebarHidden = !Preferences.showSidebarOnLaunch
+        root.setSidebarOnRight(Preferences.sidebarOnRight, animated: false)
         window.contentView = root
         window.setFrameAutosaveName("ArgonBrowserWindow")
         if !window.setFrameUsingName("ArgonBrowserWindow") { window.center() }
@@ -36,6 +37,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         refreshSidebar()
         applyFrame(animated: false)
         NotificationCenter.default.addObserver(self, selector: #selector(downloadsChanged(_:)), name: .downloadsDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(sidebarSideChanged(_:)), name: .sidebarSideDidChange, object: nil)
+    }
+
+    @objc private func sidebarSideChanged(_ notification: Notification) {
+        root.setSidebarOnRight(Preferences.sidebarOnRight, animated: true)
     }
 
     @objc private func downloadsChanged(_ notification: Notification) {
@@ -129,6 +135,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         if displayedTab !== tab {
             closeFindBar(focusPage: false)
             enterAutoPictureInPicture(leaving: displayedTab)
+            displayedTab?.captureSnapshot()
             displayedTab?.tab?.isVisible = false
             displayedTab = tab
             exitAutoPictureInPicture(returningTo: tab)
@@ -866,11 +873,63 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         root.showToast("Press \u{2318}Q again to quit", duration: duration)
     }
 
-    // Links from other apps open as new tabs in the active space.
+    // Links from other apps follow the link rules, then open in Little Argon or the active space.
     func open(_ urls: [URL]) {
-        for url in urls { openTab(url) }
+        var openedHere = false
+        for url in urls {
+            if let rule = LinkRouter.rule(for: url), let space = spaces.first(where: { $0.id == rule.spaceID }) {
+                openTab(url, in: space)
+                openedHere = true
+            } else if LinkRouter.destination == .littleArgon, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                      let profile = activeSpace.profile {
+                LittleWindowController.open(url, space: activeSpace, profile: profile, browser: self)
+            } else {
+                openTab(url)
+                openedHere = true
+            }
+        }
+        if openedHere { bringToFront() }
+    }
+
+    func bringToFront() {
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    var allSpaces: [Space] { spaces }
+
+    func liveSpace(_ space: Space) -> Space? {
+        if spaces.contains(where: { $0 === space }) { return space }
+        return spaces.first { $0.profileIdentifier == space.profileIdentifier }
+    }
+
+    func adopt(_ tab: BrowserTab, into space: Space) {
+        tab.observer = self
+        space.tabs.insert(tab, at: 0)
+        select(tab)
+        bringToFront()
+    }
+
+    func adoptOpened(_ newTab: Tab, in space: Space, disposition: TabOpenDisposition) {
+        guard let space = liveSpace(space) else {
+            newTab.close()
+            return
+        }
+        insertOpened(newTab, in: space, at: 0, disposition: disposition)
+        if disposition != .background { bringToFront() }
+    }
+
+    func offerRule(for url: URL, space: Space) {
+        guard let host = LinkRouter.displayHost(of: url), !LinkRouter.hasRule(forHost: host) else { return }
+        let actions = [
+            ToastAction(title: "Not Now") { _ in },
+            ToastAction(title: "Always", isPrimary: true) { [weak self] _ in
+                LinkRouter.addRule(pattern: host, spaceID: space.id)
+                self?.root.showToast("\(host) links will open in \(space.name)", icon: "arrow.triangle.branch", duration: 3)
+            },
+        ]
+        root.showToast(ToastView(message: "Always open \(host) in \(space.name)?", icon: "arrow.triangle.branch",
+                                 actions: actions, duration: 12))
     }
 
     @objc func copyURL(_ sender: Any?) {
@@ -897,6 +956,34 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     @objc func nextTab(_ sender: Any?) { cycleTab(by: 1) }
     @objc func previousTab(_ sender: Any?) { cycleTab(by: -1) }
+
+    private var tabSwitcher: TabSwitcher?
+
+    @objc func nextRecentTab(_ sender: Any?) { switchRecentTab(forward: true) }
+    @objc func previousRecentTab(_ sender: Any?) { switchRecentTab(forward: false) }
+
+    private func switchRecentTab(forward: Bool) {
+        if let tabSwitcher {
+            tabSwitcher.step(forward: forward)
+            return
+        }
+        activeTab?.captureSnapshot()
+        let switcher = TabSwitcher(tabs: recentTabs(), forward: forward, host: root, fill: root.toastFill) { [weak self] tab in
+            self?.tabSwitcher = nil
+            if let tab, tab !== self?.activeTab { self?.select(tab) }
+        }
+        tabSwitcher = switcher
+        switcher?.begin()
+    }
+
+    private func recentTabs() -> [BrowserTab] {
+        var seen = Set<ObjectIdentifier>()
+        let current = activeTab
+        let tabs = activeSpace.allTabs
+            .filter { ($0 === current || $0.lastActive > .distantPast) && seen.insert(ObjectIdentifier($0)).inserted }
+            .sorted { $0 === current || ($1 !== current && $0.lastActive > $1.lastActive) }
+        return Array(tabs.prefix(TabSwitcher.limit))
+    }
 
     private func cycleTab(by delta: Int) {
         let tabs = activeSpace.visibleTabs
@@ -944,7 +1031,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     // MARK: Sidebar resizing
 
-    private func resizeSidebar(to x: CGFloat) {
+    private func resizeSidebar(to location: CGFloat) {
+        let x = root.sidebarOnRight ? root.bounds.width - location : location
         if x < Metrics.sidebarMinWidth - 40 {
             if !root.sidebarHidden { toggleSidebarPanel(nil) }
             return
@@ -965,12 +1053,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     }
 
     func browserTab(_ tab: BrowserTab, didOpen newTab: Tab, disposition: TabOpenDisposition) {
-        guard let index = spaceIndex(of: tab) else { return }
-        let opened = BrowserTab(tab: newTab)
-        opened.observer = self
+        guard let index = spaceIndex(of: tab) else {
+            newTab.close()
+            return
+        }
         let space = spaces[index]
         let position = (space.tabs.firstIndex { $0 === tab } ?? -1) + 1
-        space.tabs.insert(opened, at: disposition == .background ? position : 0)
+        insertOpened(newTab, in: space, at: disposition == .background ? position : 0, disposition: disposition)
+    }
+
+    private func insertOpened(_ newTab: Tab, in space: Space, at position: Int, disposition: TabOpenDisposition) {
+        let opened = BrowserTab(tab: newTab)
+        opened.observer = self
+        space.tabs.insert(opened, at: min(position, space.tabs.count))
         if disposition == .background {
             newTab.isVisible = false
             refreshSidebar()
@@ -981,6 +1076,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     }
 
     func browserTabDidRequestClose(_ tab: BrowserTab) { close(tab) }
+
+    lazy var passwordOffers = PasswordOfferPresenter { [weak self] toast in self?.root.showToast(toast) }
+
+    func browserTab(_ tab: BrowserTab, didOfferPassword offer: PasswordOffer) { passwordOffers.present(offer) }
+
+    func browserTab(_ tab: BrowserTab, didWithdrawPasswordOffer offer: PasswordOffer) { passwordOffers.withdraw(offer) }
 
     func browserTab(_ tab: BrowserTab, didUpdateFindMatches matches: Int, activeMatch: Int) {
         guard tab === displayedTab else { return }
@@ -1072,7 +1173,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
                         (space.pinnedTabs + space.tabs.filter { $0.url != nil }).firstIndex { $0 === active }
                     },
                     pinnedCollapsed: space.pinnedCollapsed,
-                    opacity: space.opacity < 1 ? space.opacity : nil
+                    opacity: space.opacity < 1 ? space.opacity : nil,
+                    id: space.id
                 )
             },
             activeSpace: activeIndex,

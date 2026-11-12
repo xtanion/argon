@@ -7,6 +7,16 @@ enum Preferences {
     private static let screenshotFolderKey = "ArgonScreenshotFolder"
     private static let autoPictureInPictureKey = "ArgonAutoPictureInPicture"
     private static let checkForUpdatesKey = "ArgonCheckForUpdates"
+    private static let sidebarOnRightKey = "ArgonSidebarOnRight"
+
+    static var sidebarOnRight: Bool {
+        get { UserDefaults.standard.bool(forKey: sidebarOnRightKey) }
+        set {
+            guard newValue != sidebarOnRight else { return }
+            UserDefaults.standard.set(newValue, forKey: sidebarOnRightKey)
+            NotificationCenter.default.post(name: .sidebarSideDidChange, object: nil)
+        }
+    }
 
     static var checkForUpdates: Bool {
         get { UserDefaults.standard.object(forKey: checkForUpdatesKey) as? Bool ?? true }
@@ -53,6 +63,10 @@ enum Preferences {
             }
         }
     }
+}
+
+extension Notification.Name {
+    static let sidebarSideDidChange = Notification.Name("ArgonSidebarSideDidChange")
 }
 
 @MainActor

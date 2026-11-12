@@ -8,6 +8,8 @@ protocol BrowserTabObserver: AnyObject {
     func browserTab(_ tab: BrowserTab, didRequestFullscreen fullscreen: Bool)
     func browserTab(_ tab: BrowserTab, didUpdateFindMatches matches: Int, activeMatch: Int)
     func browserTabDidChangeMedia(_ tab: BrowserTab)
+    func browserTab(_ tab: BrowserTab, didOfferPassword offer: PasswordOffer)
+    func browserTab(_ tab: BrowserTab, didWithdrawPasswordOffer offer: PasswordOffer)
 }
 
 // A sidebar tab. The web page is created lazily, so restored tabs cost nothing
@@ -23,6 +25,20 @@ final class BrowserTab: NSObject, TabDelegate {
     private(set) var pinnedURL: URL?
     private(set) var pinnedTitle = ""
     var cachedFavicon: NSImage?
+    private(set) var snapshot: NSImage?
+
+    func captureSnapshot() {
+        guard let tab, tab.isVisible, tab.url?.scheme != "about" else { return }
+        tab.captureVisibleContent { [weak self] image in
+            guard let image, image.size.width > 0 else { return }
+            let width: CGFloat = 400
+            let size = NSSize(width: width, height: (width * image.size.height / image.size.width).rounded())
+            self?.snapshot = NSImage(size: size, flipped: false) { rect in
+                image.draw(in: rect)
+                return true
+            }
+        }
+    }
 
     init(url: URL?, title: String = "") {
         savedURL = url
@@ -116,7 +132,10 @@ final class BrowserTab: NSObject, TabDelegate {
 
     func tabDidChangeTitle(_ tab: Tab) { observer?.browserTabDidChange(self) }
     func tabDidChangeURL(_ tab: Tab) { observer?.browserTabDidChange(self) }
-    func tabDidChangeLoading(_ tab: Tab) { observer?.browserTabDidChange(self) }
+    func tabDidChangeLoading(_ tab: Tab) {
+        if !tab.isLoading { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.captureSnapshot() } }
+        observer?.browserTabDidChange(self)
+    }
     func tabDidChangeNavigationState(_ tab: Tab) { observer?.browserTabDidChange(self) }
     func tabDidChangeFavicon(_ tab: Tab) {
         if let favicon = tab.favicon { cachedFavicon = favicon }
@@ -130,6 +149,14 @@ final class BrowserTab: NSObject, TabDelegate {
     func tabDidRequestClose(_ tab: Tab) { observer?.browserTabDidRequestClose(self) }
 
     func tabDidChangeMedia(_ tab: Tab) { observer?.browserTabDidChangeMedia(self) }
+
+    func tab(_ tab: Tab, didOfferPassword offer: PasswordOffer) {
+        observer?.browserTab(self, didOfferPassword: offer)
+    }
+
+    func tab(_ tab: Tab, didWithdrawPasswordOffer offer: PasswordOffer) {
+        observer?.browserTab(self, didWithdrawPasswordOffer: offer)
+    }
 
     func tab(_ tab: Tab, didRequestFullscreen fullscreen: Bool) {
         observer?.browserTab(self, didRequestFullscreen: fullscreen)
@@ -320,7 +347,10 @@ final class Space {
 
     var frameColor: NSColor { customColor ?? Palette.frame(hue: hue, intensity: intensity) }
 
-    init(name: String, symbol: String, hue: Double, profileIdentifier: String) {
+    let id: String
+
+    init(id: String = UUID().uuidString, name: String, symbol: String, hue: Double, profileIdentifier: String) {
+        self.id = id
         self.name = name
         self.symbol = symbol
         self.hue = hue
@@ -359,6 +389,7 @@ struct SavedState: Codable, Sendable {
         var active: Int?
         var pinnedCollapsed: Bool? = nil
         var opacity: Double? = nil
+        var id: String? = nil
     }
 
     var spaces: [SavedSpace]

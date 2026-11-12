@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, ApplicationDelegate {
             }
         }
         let spaces = state.spaces.map { saved in
-            let space = Space(name: saved.name, symbol: saved.symbol, hue: saved.hue, profileIdentifier: saved.profile)
+            let space = Space(id: saved.id ?? UUID().uuidString, name: saved.name, symbol: saved.symbol, hue: saved.hue, profileIdentifier: saved.profile)
             space.intensity = saved.intensity ?? Palette.defaultIntensity
             space.customColor = saved.color.flatMap { NSColor(hex: $0) }
             space.opacity = min(max(saved.opacity ?? 1, Palette.minimumOpacity), 1)

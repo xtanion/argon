@@ -191,6 +191,8 @@ final class ToastView: HoverView {
     private static let actionSpacing: CGFloat = 6
 
     var onDismiss: (() -> Void)?
+    var onHide: (() -> Void)?
+    var wasReplaced = false
     var fillColor: NSColor = Palette.ink { didSet { needsDisplay = true } }
 
     private let label: NSTextField
@@ -335,6 +337,7 @@ final class ToastView: HoverView {
         }, completionHandler: { [weak self] in
             self?.removeFromSuperview()
             self?.onDismiss?()
+            self?.onHide?()
         })
     }
 }
@@ -449,6 +452,14 @@ final class ActionMenu: NSObject, NSPopoverDelegate {
         content?.window?.makeFirstResponder(content)
     }
 
+    func show(at point: NSPoint, in view: NSView, edge: NSRectEdge) {
+        popover.appearance = view.effectiveAppearance
+        popover.show(relativeTo: NSRect(x: point.x, y: point.y, width: 1, height: 1), of: view, preferredEdge: edge)
+        let content = popover.contentViewController?.view
+        content?.window?.makeKey()
+        content?.window?.makeFirstResponder(content)
+    }
+
     func close() { popover.performClose(nil) }
 
     func popoverWillClose(_ notification: Notification) {
@@ -489,7 +500,8 @@ final class ActionMenuRow: HoverView {
         let h = bounds.height
         iconView.frame = NSRect(x: 8, y: (h - 24) / 2, width: 24, height: 24)
         shortcutLabel.frame = NSRect(x: bounds.width - 60, y: (h - 17) / 2, width: 50, height: 17)
-        titleLabel.frame = NSRect(x: 42, y: (h - 18) / 2, width: shortcutLabel.frame.minX - 46, height: 18)
+        let titleEnd = shortcutLabel.stringValue.isEmpty ? bounds.width - 10 : shortcutLabel.frame.minX - 4
+        titleLabel.frame = NSRect(x: 42, y: (h - 18) / 2, width: titleEnd - 42, height: 18)
     }
 
     override func updateLayer() {

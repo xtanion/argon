@@ -110,9 +110,9 @@ enum MainMenu {
                 .keyEquivalentModifierMask = [.command, .option]
             menu.addItem(withTitle: "Previous Tab", action: #selector(BrowserWindowController.previousTab(_:)), keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
                 .keyEquivalentModifierMask = [.command, .option]
-            menu.addItem(withTitle: "Next Tab", action: #selector(BrowserWindowController.nextTab(_:)), keyEquivalent: "\t")
+            menu.addItem(withTitle: "Switch to Recent Tab", action: #selector(BrowserWindowController.nextRecentTab(_:)), keyEquivalent: "\t")
                 .keyEquivalentModifierMask = [.control]
-            menu.addItem(withTitle: "Previous Tab", action: #selector(BrowserWindowController.previousTab(_:)), keyEquivalent: "\t")
+            menu.addItem(withTitle: "Switch to Recent Tab (Reverse)", action: #selector(BrowserWindowController.previousRecentTab(_:)), keyEquivalent: "\t")
                 .keyEquivalentModifierMask = [.control, .shift]
             menu.addHiddenAlternate("Next Tab", action: #selector(BrowserWindowController.nextTab(_:)), key: "]", modifiers: [.command, .shift])
             menu.addHiddenAlternate("Previous Tab", action: #selector(BrowserWindowController.previousTab(_:)), key: "[", modifiers: [.command, .shift])

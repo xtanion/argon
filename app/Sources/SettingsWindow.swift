@@ -3,12 +3,13 @@ import AppKit
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     enum Pane: String, CaseIterable {
-        case general, spaces, shortcuts
+        case general, spaces, links, shortcuts
 
         var title: String {
             switch self {
             case .general: return "General"
             case .spaces: return "Spaces"
+            case .links: return "Links"
             case .shortcuts: return "Shortcuts"
             }
         }
@@ -17,6 +18,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             switch self {
             case .general: return "gearshape"
             case .spaces: return "square.on.square"
+            case .links: return "arrow.triangle.branch"
             case .shortcuts: return "keyboard"
             }
         }
@@ -88,6 +90,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switch pane {
         case .general: return GeneralSettingsPane()
         case .spaces: return SpacesSettingsPane()
+        case .links: return LinksSettingsPane()
         case .shortcuts: return ShortcutsSettingsPane()
         }
     }

@@ -223,6 +223,36 @@ final class RootView: NSView {
         }
     }
     var sidebarWidth = Metrics.sidebarWidth { didSet { needsLayout = true } }
+    private(set) var sidebarOnRight = false
+    private var pendingSide: Bool?
+
+    func setSidebarOnRight(_ right: Bool, animated: Bool) {
+        guard right != (pendingSide ?? sidebarOnRight) else { return }
+        endPeek(animated: false)
+        guard animated, !sidebarHidden, !contentFullscreen, !Motion.reduced, window != nil else {
+            commitSide(right)
+            return
+        }
+        let sliding = pendingSide != nil
+        pendingSide = right
+        guard !sliding else { return }
+        animateDock(to: 0, keepingPendingSide: true) { [weak self] in
+            guard let self else { return }
+            self.commitPendingSide()
+            self.animateDock(to: self.sidebarHidden ? 0 : 1)
+        }
+    }
+
+    private func commitSide(_ right: Bool) {
+        pendingSide = nil
+        sidebarOnRight = right
+        sidebar.isOnRight = right
+        needsLayout = true
+    }
+
+    private func commitPendingSide() {
+        if let pendingSide { commitSide(pendingSide) }
+    }
     var sidebarHidden = false {
         didSet {
             guard sidebarHidden != oldValue else { return }
@@ -329,21 +359,31 @@ final class RootView: NSView {
             card.frame = bounds
         } else if sidebarPeeking {
             card.frame = fullCard
-            sidebar.frame = floating
+            sidebar.frame = mirrored(floating)
             sidebar.layer?.shadowPath = CGPath(roundedRect: sidebar.bounds, cornerWidth: Metrics.cardRadius, cornerHeight: Metrics.cardRadius, transform: nil)
         } else {
             let docked = NSRect(x: 0, y: 0, width: w, height: h)
             let dockedCard = NSRect(x: w, y: inset, width: bounds.width - w - inset, height: h - 2 * inset)
             let hidden = dockFromPeek ? floating : NSRect(x: -w, y: 0, width: w, height: h)
-            sidebar.frame = Self.lerp(hidden, docked, dockProgress)
-            card.frame = Self.lerp(fullCard, dockedCard, dockProgress).integral
-            resizeHandle.frame = NSRect(x: w - 3, y: Metrics.titlebarHeight, width: 6, height: h - Metrics.titlebarHeight)
+            sidebar.frame = mirrored(Self.lerp(hidden, docked, dockProgress))
+            card.frame = mirrored(Self.lerp(fullCard, dockedCard, dockProgress).integral)
+            resizeHandle.frame = mirrored(NSRect(x: w - 3, y: Metrics.titlebarHeight, width: 6, height: h - Metrics.titlebarHeight))
         }
-        edgeTracker.frame = NSRect(x: 0, y: 0, width: inset + 4, height: bounds.height)
-        peekTracker.frame = NSRect(x: 0, y: 0, width: sidebar.frame.maxX + 16, height: bounds.height)
+        edgeTracker.frame = mirrored(NSRect(x: 0, y: 0, width: inset + 4, height: h))
+        let reach = sidebarOnRight ? bounds.width - sidebar.frame.minX : sidebar.frame.maxX
+        peekTracker.frame = mirrored(NSRect(x: 0, y: 0, width: reach + 16, height: h))
         commandBar?.frame = bounds
         if let toast { toast.setFrameOrigin(toastOrigin(for: toast)) }
         updateChrome()
+    }
+
+    private func mirrored(_ rect: NSRect) -> NSRect {
+        guard sidebarOnRight else { return rect }
+        return NSRect(x: bounds.width - rect.maxX, y: rect.minY, width: rect.width, height: rect.height)
+    }
+
+    private var peekOffset: CGFloat {
+        sidebarOnRight ? bounds.width - sidebar.frame.minX + 20 : -(sidebar.frame.maxX + 20)
     }
 
     func showToast(_ message: String, icon: String? = nil, action: ToastAction? = nil, duration: TimeInterval = 2.5) {
@@ -351,6 +391,7 @@ final class RootView: NSView {
     }
 
     func showToast(_ newToast: ToastView) {
+        toast?.wasReplaced = true
         toast?.dismiss()
         toast = newToast
         newToast.fillColor = toastFill
@@ -371,7 +412,8 @@ final class RootView: NSView {
                width: a.width + (b.width - a.width) * t, height: a.height + (b.height - a.height) * t)
     }
 
-    private func animateDock(to target: CGFloat) {
+    private func animateDock(to target: CGFloat, keepingPendingSide: Bool = false, completion: (() -> Void)? = nil) {
+        if !keepingPendingSide { commitPendingSide() }
         dockTicker?.stop()
         dockTicker = nil
         let start = dockProgress
@@ -379,6 +421,7 @@ final class RootView: NSView {
             dockProgress = target
             dockFromPeek = false
             needsLayout = true
+            completion?()
             return
         }
         let duration = 0.2 * Double(abs(target - start))
@@ -394,6 +437,7 @@ final class RootView: NSView {
             }
             self.needsLayout = true
             self.layoutSubtreeIfNeeded()
+            if t >= 1 { completion?() }
             return t < 1
         }
     }
@@ -411,7 +455,7 @@ final class RootView: NSView {
         sidebar.layer?.removeAnimation(forKey: "peek")
         guard !Motion.reduced, let layer = sidebar.layer else { return }
         let slide = CABasicAnimation(keyPath: "transform.translation.x")
-        slide.fromValue = -(sidebar.frame.maxX + 20)
+        slide.fromValue = peekOffset
         slide.toValue = 0
         slide.duration = 0.22
         slide.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
@@ -460,7 +504,7 @@ final class RootView: NSView {
         CATransaction.setCompletionBlock { MainActor.assumeIsolated { finish() } }
         let slide = CABasicAnimation(keyPath: "transform.translation.x")
         slide.fromValue = 0
-        slide.toValue = -(sidebar.frame.maxX + 20)
+        slide.toValue = peekOffset
         slide.duration = 0.18
         slide.timingFunction = CAMediaTimingFunction(name: .easeIn)
         slide.fillMode = .forwards

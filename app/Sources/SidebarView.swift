@@ -372,11 +372,56 @@ final class SidebarView: NSView {
     func editIcon(_ index: Int, relativeTo view: NSView) { controller?.showIconPicker(forSpace: index, relativeTo: view) }
 
     override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
+        if event.modifierFlags.contains(.control) {
+            showSidebarMenu(for: event, in: self)
+        } else if event.clickCount == 2 {
             controller?.newTab(nil)
         } else {
             window?.performDrag(with: event)
         }
+    }
+
+    override func rightMouseDown(with event: NSEvent) { showSidebarMenu(for: event, in: self) }
+
+    var isOnRight = false {
+        didSet { toggleButton.setSymbol(isOnRight ? "sidebar.right" : "sidebar.left", size: 15) }
+    }
+
+    private var sidebarMenu: ActionMenu?
+
+    func showSidebarMenu(for event: NSEvent, in view: NSView) {
+        sidebarMenu?.close()
+        let index = activeSpaceIndex
+        let anchor = { [weak self] in self?.spaceAnchor(index) }
+        let onRight = isOnRight
+        let menu = ActionMenu(entries: [
+            .item(ActionMenuItem(title: onRight ? "Move Sidebar to Left" : "Move Sidebar to Right",
+                                 symbol: onRight ? "sidebar.left" : "sidebar.right", shortcut: nil) {
+                Preferences.sidebarOnRight = !onRight
+            }),
+            .separator,
+            .item(ActionMenuItem(title: "Edit Theme", symbol: "paintpalette", shortcut: nil) { [weak self] in
+                guard let view = anchor() else { return }
+                self?.editTheme(index, relativeTo: view)
+            }),
+            .item(ActionMenuItem(title: "Change Icon", symbol: "face.smiling", shortcut: nil) { [weak self] in
+                guard let view = anchor() else { return }
+                self?.editIcon(index, relativeTo: view)
+            }),
+            .item(ActionMenuItem(title: "Rename Space", symbol: "pencil", shortcut: nil) { [weak self] in
+                self?.renameSpace(index)
+            }),
+            .separator,
+            .item(ActionMenuItem(title: "New Tab", symbol: "plus.square", shortcut: "\u{2318}T") { [weak self] in
+                self?.controller?.newTab(nil)
+            }),
+            .item(ActionMenuItem(title: "New Folder", symbol: "folder", shortcut: nil) { [weak self] in
+                self?.controller?.newFolder()
+            }),
+        ])
+        sidebarMenu = menu
+        let point = view.convert(event.locationInWindow, from: nil)
+        menu.show(at: point, in: view, edge: onRight ? .minX : .maxX)
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -957,19 +1002,16 @@ final class TabListView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
+        if event.modifierFlags.contains(.control) {
+            sidebar?.showSidebarMenu(for: event, in: self)
+        } else if event.clickCount == 2 {
             sidebar?.controller?.newTab(nil)
         } else {
             window?.performDrag(with: event)
         }
     }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
-        let menu = NSMenu()
-        menu.addItem(ClosureMenuItem("New Tab") { [weak self] in self?.sidebar?.controller?.newTab(nil) })
-        menu.addItem(ClosureMenuItem("New Folder") { [weak self] in self?.sidebar?.controller?.newFolder() })
-        return menu
-    }
+    override func rightMouseDown(with event: NSEvent) { sidebar?.showSidebarMenu(for: event, in: self) }
 }
 
 // Folder glyph in Arc's style: a solid folder with the chosen icon cut out of

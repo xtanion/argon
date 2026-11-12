@@ -8,6 +8,11 @@ let contentInset: CGFloat = 24
 final class GeneralSettingsPane: SettingsPane {
     private let chip = DefaultBrowserChip()
     private let folderPopUp = SettingsPopUp { _ in }
+    private let sidebarSidePopUp = SettingsPopUp { item in Preferences.sidebarOnRight = item.tag == 1 }
+
+    @objc private func syncSidebarSide() {
+        sidebarSidePopUp.selectItem(withTag: Preferences.sidebarOnRight ? 1 : 0)
+    }
 
     override func loadView() {
         super.loadView()
@@ -22,7 +27,16 @@ final class GeneralSettingsPane: SettingsPane {
             SettingsRow(title: "Show sidebar on launch", subtitle: "Turn off to start with the sidebar hidden.",
                         badge: SettingsStyle.badge("sidebar.left", color: .systemBlue),
                         accessory: SettingsSwitch(isOn: Preferences.showSidebarOnLaunch) { Preferences.showSidebarOnLaunch = $0 }),
+            SettingsRow(title: "Sidebar position", subtitle: "Show the sidebar on the left or right side of the window.",
+                        badge: SettingsStyle.badge("sidebar.right", color: .systemIndigo),
+                        accessory: sidebarSidePopUp),
         ])
+        for (tag, title) in ["Left", "Right"].enumerated() {
+            sidebarSidePopUp.addItem(withTitle: title)
+            sidebarSidePopUp.lastItem?.tag = tag
+        }
+        syncSidebarSide()
+        NotificationCenter.default.addObserver(self, selector: #selector(syncSidebarSide), name: .sidebarSideDidChange, object: nil)
 
         let media = SettingsCard([
             SettingsRow(title: "Automatic Picture in Picture",
@@ -485,5 +499,118 @@ final class SpacesSettingsPane: SettingsPane, NSTextFieldDelegate {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.widthAnchor.constraint(equalToConstant: 30).isActive = true
         button.heightAnchor.constraint(equalToConstant: 28).isActive = true
+    }
+}
+
+// MARK: Links
+
+@MainActor
+final class LinksSettingsPane: SettingsPane, NSTextFieldDelegate {
+    private let destinationPopUp = SettingsPopUp { item in
+        LinkRouter.destination = item.tag == 0 ? .littleArgon : .activeSpace
+    }
+    private let list = SettingsList<LinkRule>(title: "Link Rules")
+    private let patternField = NSTextField()
+    private let spacePopUp = SettingsPopUp { _ in }
+    private let addButton = SettingsButton("Add Rule", prominent: true)
+    private let removeButton = NSButton()
+
+    override func loadView() {
+        super.loadView()
+        for (tag, title) in ["Little Argon", "Current Space"].enumerated() {
+            destinationPopUp.addItem(withTitle: title)
+            destinationPopUp.lastItem?.tag = tag
+        }
+        let destination = SettingsCard([
+            SettingsRow(title: "Open links from other apps in",
+                        subtitle: "Little Argon is a small window you can move into a Space with one click.",
+                        badge: SettingsStyle.badge("macwindow", color: .systemBlue),
+                        accessory: destinationPopUp, wraps: true),
+        ])
+
+        let intro = NSTextField(wrappingLabelWithString:
+            "Links that match a rule skip Little Argon and open straight in their Space. A rule matches the site and its subdomains, or a path such as github.com/acme.")
+        intro.font = SettingsStyle.subtitle
+        intro.textColor = .secondaryLabelColor
+
+        patternField.placeholderString = "example.com"
+        patternField.bezelStyle = .roundedBezel
+        patternField.delegate = self
+        patternField.target = self
+        patternField.action = #selector(addRule)
+        patternField.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        addButton.onPress = { [weak self] in self?.addRule() }
+        let editor = NSStackView(views: [patternField, spacePopUp, addButton])
+        editor.spacing = 8
+        let newRule = SettingsCard([SettingsRow(title: "Open", accessory: editor)])
+
+        list.render = { [weak self] rule in
+            let space = self?.space(id: rule.spaceID)
+            return (rule.pattern, space?.name ?? "Missing Space", space.map { SettingsStyle.badge(for: $0, size: 20) })
+        }
+        list.onSelect = { [weak self] _ in self?.updateRemoveButton() }
+        SpacesSettingsPane.configureFooterButton(removeButton, symbol: "minus", toolTip: "Remove Rule")
+        removeButton.target = self
+        removeButton.action = #selector(removeRule)
+        list.setFooter([removeButton])
+        list.heightAnchor.constraint(equalToConstant: 250).isActive = true
+
+        let column = NSStackView.settingsColumn([destination, intro, newRule, list])
+        column.setCustomSpacing(22, after: destination)
+        view.pinCentered(column, width: SettingsStyle.width, top: contentInset)
+        NotificationCenter.default.addObserver(self, selector: #selector(rulesChanged), name: .linkRulesDidChange, object: nil)
+    }
+
+    override func reload() {
+        _ = view
+        destinationPopUp.selectItem(withTag: LinkRouter.destination == .littleArgon ? 0 : 1)
+        let selectedID = spacePopUp.selectedItem?.representedObject as? String
+        spacePopUp.removeAllItems()
+        for space in browser?.allSpaces ?? [] {
+            spacePopUp.addItem(withTitle: space.name)
+            spacePopUp.lastItem?.image = SettingsStyle.badge(for: space, size: 16)
+            spacePopUp.lastItem?.representedObject = space.id
+        }
+        if let selectedID, let item = spacePopUp.itemArray.first(where: { $0.representedObject as? String == selectedID }) {
+            spacePopUp.select(item)
+        }
+        rulesChanged()
+        updateAddButton()
+    }
+
+    @objc private func rulesChanged() {
+        list.items = LinkRouter.rules.sorted { $0.pattern < $1.pattern }
+        list.selectedIndex = nil
+        updateRemoveButton()
+    }
+
+    private func space(id: String) -> Space? {
+        browser?.allSpaces.first { $0.id == id }
+    }
+
+    @objc private func addRule() {
+        guard let spaceID = spacePopUp.selectedItem?.representedObject as? String,
+              LinkRouter.normalize(patternField.stringValue) != nil else {
+            NSSound.beep()
+            return
+        }
+        LinkRouter.addRule(pattern: patternField.stringValue, spaceID: spaceID)
+        patternField.stringValue = ""
+        updateAddButton()
+    }
+
+    @objc private func removeRule() {
+        guard let index = list.selectedIndex, list.items.indices.contains(index) else { return }
+        LinkRouter.removeRule(id: list.items[index].id)
+    }
+
+    func controlTextDidChange(_ obj: Notification) { updateAddButton() }
+
+    private func updateAddButton() {
+        addButton.isEnabled = LinkRouter.normalize(patternField.stringValue) != nil && spacePopUp.numberOfItems > 0
+    }
+
+    private func updateRemoveButton() {
+        removeButton.isEnabled = list.selectedIndex != nil
     }
 }

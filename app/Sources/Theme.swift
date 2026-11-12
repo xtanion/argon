@@ -10,8 +10,8 @@ enum Metrics {
     static let tabSpacing: CGFloat = 5
     static let rowRadius: CGFloat = 12
     static let buttonRadius: CGFloat = 6
-    static let cardInset: CGFloat = 8
-    static let cardRadius: CGFloat = 10
+    static let cardInset: CGFloat = 10
+    static let cardRadius: CGFloat = 8
     static let shadowRadius: CGFloat = 16
     static let shadowOpacity: Float = 0.08
     static let shadowOffset = CGSize(width: 0, height: -8)
@@ -20,13 +20,13 @@ enum Metrics {
     static let toolbarButtonPitch: CGFloat = 34
     static let iconFrame: CGFloat = 24
     static let faviconSize: CGFloat = 16
-    static let spaceBarHeight: CGFloat = 44
+    static let spaceBarHeight: CGFloat = 50
     static let spaceBarBottomInset: CGFloat = 10
     static let spaceButtonSize: CGFloat = 28
     static let spaceButtonGap: CGFloat = 6
     static let spaceIconSize: CGFloat = 13
     static let spaceBarIconSize: CGFloat = 11
-    static let titleX: CGFloat = 36
+    static let titleX: CGFloat = 34
     static let folderIndent: CGFloat = 14
 }
 
@@ -56,7 +56,7 @@ enum Palette {
     static let tabHover = dynamic(dark: NSColor(white: 1, alpha: CGFloat(0x1A) / 255)) {
         frameIsVeryLight ? NSColor(white: 0, alpha: CGFloat(0x0A) / 255) : NSColor(white: 1, alpha: CGFloat(0x66) / 255)
     }
-    static let text = white(0xF0)
+    static let text = white(0xDE)
     static let pillText = white(0xC8)
     static let icon = white(0xAC)
     static let subtle = white(0x8A)
@@ -111,7 +111,14 @@ enum Palette {
     static func accentGradient(_ accent: NSColor) -> [CGColor] {
         [accent.cgColor, (accent.blended(withFraction: 0.35, of: .white) ?? accent).cgColor]
     }
-    static let minimumOpacity = 0.1
+    static let minimumOpacity = 0.21
+
+    static func frameWash(_ color: NSColor) -> NSColor {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return color }
+        let floor: CGFloat = 24 / 255, span: CGFloat = 220 / 255
+        return NSColor(srgbRed: floor + rgb.redComponent * span, green: floor + rgb.greenComponent * span,
+                       blue: floor + rgb.blueComponent * span, alpha: 1)
+    }
 
     // Flattens a translucent palette color onto `base`, for surfaces drawn over page content.
     static func opaque(_ overlay: NSColor, on base: NSColor, appearance: NSAppearance) -> NSColor {
@@ -202,8 +209,8 @@ extension NSFont {
 
 @MainActor
 enum Typography {
-    static let sidebar = NSFont.inter(13, weight: .medium)
-    static let sidebarEmphasis = NSFont.inter(13, weight: .semibold)
+    static let sidebar = NSFont.systemFont(ofSize: 14)
+    static let sidebarEmphasis = NSFont.systemFont(ofSize: 14, weight: .semibold)
     static let commandField = NSFont.inter(19)
     static let commandTitle = NSFont.inter(14, weight: .medium)
     static let commandSubtitle = NSFont.inter(13)
@@ -342,10 +349,10 @@ enum Motion {
 }
 
 extension NSImage {
-    static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight = .semibold) -> NSImage? {
+    static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight = .regular) -> NSImage? {
         if let glyph = SpaceGlyph(rawValue: name) { return glyph.image(size: size) }
         if let first = name.first, !first.isASCII { return emoji(name, size: size) }
-        let config = NSImage.SymbolConfiguration(pointSize: size, weight: weight.rawValue < NSFont.Weight.semibold.rawValue ? .semibold : weight)
+        let config = NSImage.SymbolConfiguration(pointSize: size, weight: weight)
         return NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config)
     }
 

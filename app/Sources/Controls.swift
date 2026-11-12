@@ -54,18 +54,18 @@ final class IconButton: HoverView {
         didSet { imageView.alphaValue = isEnabled ? 1 : 0.35; needsDisplay = true }
     }
 
-    init(symbol: String, size: CGFloat, toolTip: String? = nil, action: (() -> Void)? = nil) {
+    init(symbol: String, size: CGFloat, weight: NSFont.Weight = .regular, toolTip: String? = nil, action: (() -> Void)? = nil) {
         self.action = action
         super.init(frame: .zero)
-        imageView.image = .symbol(symbol, size: size)
+        imageView.image = .symbol(symbol, size: size, weight: weight)
         imageView.contentTintColor = tint
         imageView.imageScaling = .scaleNone
         addSubview(imageView)
         self.toolTip = toolTip
     }
 
-    func setSymbol(_ symbol: String, size: CGFloat) {
-        imageView.image = .symbol(symbol, size: size)
+    func setSymbol(_ symbol: String, size: CGFloat, weight: NSFont.Weight = .regular) {
+        imageView.image = .symbol(symbol, size: size, weight: weight)
         needsDisplay = true
     }
 
@@ -206,7 +206,7 @@ final class ToastView: HoverView {
     }
 
     init(message: String, icon: String? = nil, actions: [ToastAction], duration: TimeInterval = 2.5) {
-        label = .sidebarLabel(message, font: .inter(14, weight: .semibold), color: Palette.text)
+        label = .sidebarLabel(message, font: .systemFont(ofSize: 14, weight: .semibold), color: Palette.text)
         label.lineBreakMode = .byClipping
         self.duration = duration
         super.init(frame: .zero)
@@ -351,7 +351,7 @@ final class ToastTextButton: HoverView {
     private let fill = AccentFill()
 
     init(title: String, isPrimary: Bool) {
-        label = .sidebarLabel(title, font: .inter(13, weight: isPrimary ? .semibold : .medium),
+        label = .sidebarLabel(title, font: .systemFont(ofSize: 13, weight: isPrimary ? .semibold : .medium),
                               color: isPrimary ? .white : Palette.pillText)
         label.alignment = .center
         self.isPrimary = isPrimary
@@ -424,7 +424,6 @@ final class AccentFill {
 
 struct ActionMenuItem {
     var title: String
-    var symbol: String
     var shortcut: String?
     var handler: @MainActor () -> Void
 }
@@ -434,123 +433,68 @@ enum ActionMenuEntry {
     case separator
 }
 
-// Arc-style popover menu of large icon rows; show it with ActionMenu.show(_:relativeTo:).
 @MainActor
-final class ActionMenu: NSObject, NSPopoverDelegate {
-    private static let width: CGFloat = 228
-    private static let rowHeight: CGFloat = 40
-    private static let inset: CGFloat = 8
-
+final class ActionMenu: NSObject, NSMenuDelegate {
     var onClose: (() -> Void)?
-    private let popover = NSPopover()
+    private let menu = NSMenu()
+    private(set) var isShown = false
     private(set) var closedAt: CFTimeInterval = 0
 
-    var isShown: Bool { popover.isShown }
+    private static let modifiers: [(Character, NSEvent.ModifierFlags)] = [
+        ("\u{2303}", .control), ("\u{2325}", .option), ("\u{21E7}", .shift), ("\u{2318}", .command),
+    ]
 
     init(entries: [ActionMenuEntry]) {
         super.init()
-        let content = ActionMenuContentView()
-        var y = Self.inset
+        menu.autoenablesItems = false
+        menu.delegate = self
         for entry in entries {
             switch entry {
             case .item(let item):
-                let row = ActionMenuRow(item: item)
-                row.frame = NSRect(x: Self.inset, y: y, width: Self.width - 2 * Self.inset, height: Self.rowHeight)
-                row.onSelect = { [weak self] in
-                    self?.popover.performClose(nil)
-                    item.handler()
-                }
-                content.addSubview(row)
-                y += Self.rowHeight
+                let handler = item.handler
+                let menuItem = ClosureMenuItem(item.title) { DispatchQueue.main.async { handler() } }
+                if let shortcut = item.shortcut { Self.apply(shortcut, to: menuItem) }
+                menu.addItem(menuItem)
             case .separator:
-                let line = HairlineView(inset: 0)
-                line.frame = NSRect(x: Self.inset + 10, y: y + 5, width: Self.width - 2 * Self.inset - 20, height: 1)
-                content.addSubview(line)
-                y += 11
+                menu.addItem(.separator())
             }
         }
-        content.frame = NSRect(x: 0, y: 0, width: Self.width, height: y + Self.inset)
-        let controller = NSViewController()
-        controller.view = content
-        popover.contentViewController = controller
-        popover.behavior = .transient
-        popover.animates = !Motion.reduced
-        popover.delegate = self
-        content.onCancel = { [weak self] in self?.close() }
+    }
+
+    private static func apply(_ shortcut: String, to item: NSMenuItem) {
+        var mask: NSEvent.ModifierFlags = []
+        var key = Substring(shortcut)
+        while let first = key.first, let flag = modifiers.first(where: { $0.0 == first })?.1 {
+            mask.insert(flag)
+            key = key.dropFirst()
+        }
+        guard !key.isEmpty else { return }
+        item.keyEquivalent = mask.contains(.shift) && key.count == 1 ? key.uppercased() : key.lowercased()
+        item.keyEquivalentModifierMask = mask.subtracting(key.count == 1 ? .shift : [])
     }
 
     func show(relativeTo view: NSView, edge: NSRectEdge = .minY) {
-        popover.appearance = view.effectiveAppearance
-        popover.show(relativeTo: view.bounds, of: view, preferredEdge: edge)
-        let content = popover.contentViewController?.view
-        content?.window?.makeKey()
-        content?.window?.makeFirstResponder(content)
+        let below = view.isFlipped ? view.bounds.maxY + 4 : view.bounds.minY - 4
+        let above = view.isFlipped ? view.bounds.minY - 4 : view.bounds.maxY + 4
+        menu.appearance = view.effectiveAppearance
+        menu.popUp(positioning: nil, at: NSPoint(x: view.bounds.minX, y: edge == .maxY ? above : below), in: view)
     }
 
     func show(at point: NSPoint, in view: NSView, edge: NSRectEdge) {
-        popover.appearance = view.effectiveAppearance
-        popover.show(relativeTo: NSRect(x: point.x, y: point.y, width: 1, height: 1), of: view, preferredEdge: edge)
-        let content = popover.contentViewController?.view
-        content?.window?.makeKey()
-        content?.window?.makeFirstResponder(content)
+        menu.appearance = view.effectiveAppearance
+        var origin = point
+        if edge == .minX { origin.x -= menu.size.width }
+        menu.popUp(positioning: nil, at: origin, in: view)
     }
 
-    func close() { popover.performClose(nil) }
+    func close() { menu.cancelTracking() }
 
-    func popoverWillClose(_ notification: Notification) {
+    func menuWillOpen(_ menu: NSMenu) { isShown = true }
+
+    func menuDidClose(_ menu: NSMenu) {
+        isShown = false
         closedAt = CACurrentMediaTime()
         onClose?()
-    }
-}
-
-@MainActor
-final class ActionMenuContentView: NSView {
-    var onCancel: (() -> Void)?
-
-    override var isFlipped: Bool { true }
-    override var acceptsFirstResponder: Bool { true }
-    override func cancelOperation(_ sender: Any?) { onCancel?() }
-}
-
-@MainActor
-final class ActionMenuRow: HoverView {
-    var onSelect: (() -> Void)?
-    private let iconView = NSImageView()
-    private let titleLabel: NSTextField
-    private let shortcutLabel: NSTextField
-
-    init(item: ActionMenuItem) {
-        titleLabel = .sidebarLabel(item.title, font: .inter(14, weight: .semibold), color: Palette.text)
-        shortcutLabel = .sidebarLabel(item.shortcut ?? "", font: .inter(13), color: Palette.faint)
-        shortcutLabel.alignment = .right
-        super.init(frame: .zero)
-        iconView.image = .symbol(item.symbol, size: 16, weight: .medium)
-        iconView.contentTintColor = Palette.text
-        iconView.imageScaling = .scaleNone
-        for view in [iconView, titleLabel, shortcutLabel] as [NSView] { addSubview(view) }
-    }
-
-    override func layout() {
-        super.layout()
-        let h = bounds.height
-        iconView.frame = NSRect(x: 8, y: (h - 24) / 2, width: 24, height: 24)
-        shortcutLabel.frame = NSRect(x: bounds.width - 60, y: (h - 17) / 2, width: 50, height: 17)
-        let titleEnd = shortcutLabel.stringValue.isEmpty ? bounds.width - 10 : shortcutLabel.frame.minX - 4
-        titleLabel.frame = NSRect(x: 42, y: (h - 18) / 2, width: titleEnd - 42, height: 18)
-    }
-
-    override func updateLayer() {
-        layer?.cornerRadius = 10
-        layer?.cornerCurve = .continuous
-        layer?.backgroundColor = isHovered ? Palette.tabHover.cgColor : nil
-    }
-
-    override func mouseDown(with event: NSEvent) { Motion.press(self, scale: 0.97) }
-
-    override func mouseUp(with event: NSEvent) {
-        Motion.release(self)
-        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
-        onSelect?()
     }
 }
 
@@ -685,5 +629,68 @@ final class LoadingRing: NSView {
         }
         arc.strokeEnd = value
         CATransaction.commit()
+    }
+}
+
+@MainActor
+final class FrostView: NSView {
+    private let blur = NSVisualEffectView()
+    private let wash = NSView()
+
+    var cornerRadius: CGFloat = 0 {
+        didSet {
+            guard cornerRadius != oldValue else { return }
+            wash.layer?.cornerRadius = cornerRadius
+            wash.layer?.cornerCurve = .continuous
+            blur.maskImage = cornerRadius > 0 ? Self.mask(radius: cornerRadius) : nil
+        }
+    }
+
+    var tint: NSColor = .clear { didSet { if tint != oldValue { applyTint() } } }
+    var washOpacity: CGFloat = 0.72 { didSet { if washOpacity != oldValue { applyTint() } } }
+
+    private static func mask(radius: CGFloat) -> NSImage {
+        let edge = 2 * radius + 1
+        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        blur.blendingMode = .withinWindow
+        blur.material = .hudWindow
+        blur.state = .active
+        wash.wantsLayer = true
+        wash.layer?.masksToBounds = true
+        for view in [blur, wash] {
+            view.frame = bounds
+            view.autoresizingMask = [.width, .height]
+            addSubview(view)
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(accessibilityChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        applyTint()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    @objc private func accessibilityChanged() { applyTint() }
+
+    private func applyTint() {
+        let opaque = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        blur.isHidden = opaque
+        blur.appearance = NSAppearance(named: tint.isDarkFrame ? .darkAqua : .aqua)
+        wash.layer?.backgroundColor = tint.withAlphaComponent(opaque ? 1 : washOpacity).cgColor
     }
 }

@@ -84,18 +84,17 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
     private func showMenu() {
         guard let browser else { return }
         var entries: [ActionMenuEntry] = [
-            .item(ActionMenuItem(title: "Copy Link", symbol: "link", shortcut: nil) { [weak self] in self?.copyURL(nil) }),
+            .item(ActionMenuItem(title: "Copy Link", shortcut: nil) { [weak self] in self?.copyURL(nil) }),
             .separator,
         ]
         for space in browser.allSpaces where space.profileIdentifier == self.space.profileIdentifier {
-            let symbol = space.symbol.isEmpty ? "circle" : SpaceSymbols.displayName(space.symbol, active: false)
-            entries.append(.item(ActionMenuItem(title: "Open in \(space.name)", symbol: symbol, shortcut: nil) { [weak self] in
+            entries.append(.item(ActionMenuItem(title: "Open in \(space.name)", shortcut: nil) { [weak self] in
                 self?.openInBrowser(space: space)
             }))
         }
         entries += [
             .separator,
-            .item(ActionMenuItem(title: "Link Routing\u{2026}", symbol: "arrow.triangle.branch", shortcut: nil) {
+            .item(ActionMenuItem(title: "Link Routing\u{2026}", shortcut: nil) {
                 SettingsWindowController.shared.show(.links)
             }),
         ]

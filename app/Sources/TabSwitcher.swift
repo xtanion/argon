@@ -164,7 +164,7 @@ final class TabSwitcherCard: NSView {
 
     init(tab: BrowserTab) {
         titleLabel = .sidebarLabel(tab.title.isEmpty ? (tab.url?.host ?? "New Tab") : tab.title,
-                                   font: .inter(12, weight: .medium))
+                                   font: .systemFont(ofSize: 12))
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 12

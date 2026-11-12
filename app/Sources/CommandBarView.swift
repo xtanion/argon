@@ -17,7 +17,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     var frameColor: NSColor { didSet { updatePanelColor() } }
 
     private let panel = NSView()
-    private let focusRing = NSView()
+    private let frost = FrostView()
     private let glyph = NSImageView()
     private let field = NSTextField()
     private let divider = HairlineView(inset: 0, color: Palette.white(0x1F))
@@ -42,17 +42,14 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         panel.wantsLayer = true
         panel.layer?.cornerRadius = Metrics.cardRadius
         panel.layer?.cornerCurve = .continuous
-        panel.shadow = {
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(CGFloat(Metrics.shadowOpacity))
-            shadow.shadowBlurRadius = 2 * Metrics.shadowRadius
-            shadow.shadowOffset = Metrics.shadowOffset
-            return shadow
-        }()
-        focusRing.wantsLayer = true
-        focusRing.layer?.cornerRadius = Metrics.cardRadius + 4
-        focusRing.layer?.cornerCurve = .continuous
-        focusRing.layer?.backgroundColor = Palette.accent.withAlphaComponent(0.2).cgColor
+        panel.layer?.shadowColor = NSColor.black.cgColor
+        panel.layer?.shadowOpacity = Metrics.shadowOpacity
+        panel.layer?.shadowRadius = Metrics.shadowRadius
+        panel.layer?.shadowOffset = Metrics.shadowOffset
+        frost.cornerRadius = Metrics.cardRadius
+        frost.frame = panel.bounds
+        frost.autoresizingMask = [.width, .height]
+        panel.addSubview(frost)
         updatePanelColor()
 
         glyph.image = .symbol("magnifyingglass", size: 18)
@@ -74,7 +71,6 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         field.cell?.wraps = false
 
         for view in [glyph, field, divider] as [NSView] { panel.addSubview(view) }
-        addSubview(focusRing)
         addSubview(panel)
         rebuildSuggestions()
     }
@@ -86,7 +82,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     override var mouseDownCanMoveWindow: Bool { false }
 
     private func updatePanelColor() {
-        panel.layer?.backgroundColor = Palette.commandBar(frame: frameColor).cgColor
+        frost.tint = Palette.commandBar(frame: frameColor)
     }
 
     func activate() {
@@ -94,11 +90,9 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         field.currentEditor()?.selectAll(nil)
         guard !Motion.reduced else { return }
         panel.alphaValue = 0
-        focusRing.alphaValue = 0
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.12
             panel.animator().alphaValue = 1
-            focusRing.animator().alphaValue = 1
         }
     }
 
@@ -112,7 +106,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         }
         let top = max(20, bounds.height * 0.34 - header)
         panel.frame = NSRect(x: (bounds.width - width) / 2, y: top, width: width, height: height)
-        focusRing.frame = panel.frame.insetBy(dx: -4, dy: -4)
+        panel.layer?.shadowPath = CGPath(roundedRect: panel.bounds, cornerWidth: Metrics.cardRadius,
+                                         cornerHeight: Metrics.cardRadius, transform: nil)
 
         let ph = panel.bounds.height
         func flip(_ y: CGFloat, _ h: CGFloat) -> CGFloat { ph - y - h }

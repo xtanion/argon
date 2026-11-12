@@ -170,6 +170,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     private var dismissedPlayer: BrowserTab?
 
     func browserTabDidChangeMedia(_ tab: BrowserTab) {
+        sidebar.refresh(tab)
         guard let page = tab.tab else { return }
         if tab === dismissedPlayer {
             guard page.isPlayingMedia else {
@@ -388,6 +389,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     private func applyFrame(animated: Bool = true) {
         Palette.accent = Palette.accent(hue: activeSpace.hue, custom: activeSpace.customColor, on: activeSpace.frameColor)
+        sidebar.accent = Palette.accent
         root.setFrameColor(activeSpace.frameColor, opacity: CGFloat(activeSpace.opacity), animated: animated)
     }
 

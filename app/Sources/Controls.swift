@@ -163,32 +163,50 @@ extension NSTextField {
 }
 
 struct ToastAction {
-    var symbol: String
+    var symbol: String?
+    var title: String?
     var toolTip: String?
+    var isPrimary = false
     var handler: @MainActor (NSView) -> Void
+
+    init(symbol: String, toolTip: String? = nil, handler: @escaping @MainActor (NSView) -> Void) {
+        self.symbol = symbol
+        self.toolTip = toolTip
+        self.handler = handler
+    }
+
+    init(title: String, isPrimary: Bool = false, handler: @escaping @MainActor (NSView) -> Void) {
+        self.title = title
+        self.isPrimary = isPrimary
+        self.handler = handler
+    }
 }
 
 // Transient notification pill shown over the page; present it through RootView.showToast.
+// A duration of .infinity keeps it up until one of its actions runs.
 @MainActor
 final class ToastView: HoverView {
     private static let height: CGFloat = 44
     private static let inset: CGFloat = 16
     private static let actionSize: CGFloat = 30
+    private static let actionSpacing: CGFloat = 6
 
     var onDismiss: (() -> Void)?
     var fillColor: NSColor = Palette.ink { didSet { needsDisplay = true } }
 
     private let label: NSTextField
     private let iconView = NSImageView()
-    private let actionBackground = NSView()
-    private let actionButton: IconButton?
+    private var actionViews: [NSView] = []
     private let duration: TimeInterval
     private var dismissWork: DispatchWorkItem?
 
-    init(message: String, icon: String? = nil, action: ToastAction? = nil, duration: TimeInterval = 2.5) {
+    convenience init(message: String, icon: String? = nil, action: ToastAction? = nil, duration: TimeInterval = 2.5) {
+        self.init(message: message, icon: icon, actions: action.map { [$0] } ?? [], duration: duration)
+    }
+
+    init(message: String, icon: String? = nil, actions: [ToastAction], duration: TimeInterval = 2.5) {
         label = .sidebarLabel(message, font: .systemFont(ofSize: 14, weight: .semibold), color: Palette.text)
         label.lineBreakMode = .byClipping
-        actionButton = action.map { IconButton(symbol: $0.symbol, size: 14, toolTip: $0.toolTip) }
         self.duration = duration
         super.init(frame: .zero)
         layer?.cornerRadius = 14
@@ -205,20 +223,41 @@ final class ToastView: HoverView {
             iconView.imageScaling = .scaleNone
             addSubview(iconView)
         }
-        if let action, let actionButton {
-            actionBackground.wantsLayer = true
-            actionBackground.layer?.cornerRadius = 8
-            actionBackground.layer?.cornerCurve = .continuous
-            actionButton.tint = Palette.text
-            actionButton.action = { [weak self, weak actionButton] in
-                guard let self, let actionButton else { return }
-                action.handler(actionButton)
-                self.scheduleDismiss(after: 1.5)
-            }
-            addSubview(actionBackground)
-            actionBackground.addSubview(actionButton)
+        for action in actions {
+            let view = makeActionView(action)
+            addSubview(view)
+            actionViews.append(view)
         }
         setFrameSize(NSSize(width: ceil(contentWidth), height: Self.height))
+    }
+
+    private func makeActionView(_ action: ToastAction) -> NSView {
+        if let title = action.title {
+            let button = ToastTextButton(title: title, isPrimary: action.isPrimary)
+            button.action = { [weak self, weak button] in
+                guard let self, let button else { return }
+                action.handler(button)
+                self.dismiss()
+            }
+            return button
+        }
+        let background = NSView()
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 8
+        background.layer?.cornerCurve = .continuous
+        let button = IconButton(symbol: action.symbol ?? "", size: 14, toolTip: action.toolTip)
+        button.tint = Palette.text
+        button.action = { [weak self, weak button] in
+            guard let self, let button else { return }
+            action.handler(button)
+            self.scheduleDismiss(after: 1.5)
+        }
+        background.addSubview(button)
+        return background
+    }
+
+    private func actionWidth(_ view: NSView) -> CGFloat {
+        (view as? ToastTextButton)?.fittingWidth ?? Self.actionSize
     }
 
     private var hasIcon: Bool { iconView.image != nil }
@@ -226,7 +265,9 @@ final class ToastView: HoverView {
     private var textX: CGFloat { Self.inset + (hasIcon ? 22 : 0) }
 
     private var contentWidth: CGFloat {
-        textX + textWidth + (actionButton == nil ? Self.inset : 12 + Self.actionSize + 7)
+        guard !actionViews.isEmpty else { return textX + textWidth + Self.inset }
+        let actions = actionViews.reduce(0) { $0 + actionWidth($1) } + Self.actionSpacing * CGFloat(actionViews.count - 1)
+        return textX + textWidth + 12 + actions + 7
     }
 
     override func layout() {
@@ -234,15 +275,22 @@ final class ToastView: HoverView {
         let h = bounds.height
         iconView.frame = NSRect(x: Self.inset - 2, y: (h - 20) / 2, width: 20, height: 20)
         label.frame = NSRect(x: textX, y: (h - 18) / 2, width: textWidth, height: 18)
-        actionBackground.frame = NSRect(x: bounds.width - 7 - Self.actionSize, y: (h - Self.actionSize) / 2,
-                                        width: Self.actionSize, height: Self.actionSize)
-        actionButton?.frame = actionBackground.bounds
+        var x = bounds.width - 7
+        for view in actionViews.reversed() {
+            let width = actionWidth(view)
+            x -= width
+            view.frame = NSRect(x: x, y: (h - Self.actionSize) / 2, width: width, height: Self.actionSize)
+            view.subviews.first { $0 is IconButton }?.frame = view.bounds
+            x -= Self.actionSpacing
+        }
     }
 
     override func updateLayer() {
         layer?.backgroundColor = fillColor.cgColor
         layer?.borderColor = Palette.hairline.cgColor
-        actionBackground.layer?.backgroundColor = Palette.tabActive.cgColor
+        for view in actionViews where !(view is ToastTextButton) {
+            view.layer?.backgroundColor = Palette.tabActive.cgColor
+        }
     }
 
     override func hoverChanged() {
@@ -273,6 +321,7 @@ final class ToastView: HoverView {
 
     func scheduleDismiss(after delay: TimeInterval) {
         dismissWork?.cancel()
+        guard duration.isFinite else { return }
         let work = DispatchWorkItem { [weak self] in self?.dismiss() }
         dismissWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -288,6 +337,51 @@ final class ToastView: HoverView {
             self?.removeFromSuperview()
             self?.onDismiss?()
         })
+    }
+}
+
+@MainActor
+final class ToastTextButton: HoverView {
+    var action: (() -> Void)?
+    private let label: NSTextField
+    private let isPrimary: Bool
+
+    init(title: String, isPrimary: Bool) {
+        label = .sidebarLabel(title, font: .systemFont(ofSize: 13, weight: isPrimary ? .semibold : .medium),
+                              color: isPrimary ? Palette.text : Palette.pillText)
+        label.alignment = .center
+        self.isPrimary = isPrimary
+        super.init(frame: .zero)
+        layer?.cornerRadius = 8
+        layer?.cornerCurve = .continuous
+        addSubview(label)
+    }
+
+    var fittingWidth: CGFloat { ceil(label.attributedStringValue.size().width) + 22 }
+
+    override func layout() {
+        super.layout()
+        label.frame = NSRect(x: 0, y: (bounds.height - 17) / 2, width: bounds.width, height: 17)
+    }
+
+    override func updateLayer() {
+        layer?.backgroundColor = isPrimary ? Palette.tabActive.cgColor : isHovered ? Palette.tabHover.cgColor : nil
+        layer?.borderWidth = isPrimary && isHovered ? 0.5 : 0
+        layer?.borderColor = Palette.subtle.cgColor
+    }
+
+    override func hoverChanged() {
+        if !isPrimary { label.textColor = isHovered ? Palette.text : Palette.pillText }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        Motion.press(self, scale: 0.95)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        Motion.release(self)
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        action?()
     }
 }
 

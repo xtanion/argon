@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, ApplicationDelegate {
             application.extensionTabsDelegate = controller
             controller.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
+            BackgroundWorker.shared.register(UpdateCheckJob())
+            BackgroundWorker.shared.start()
             if !self.pendingURLs.isEmpty {
                 controller.open(self.pendingURLs)
                 self.pendingURLs = []

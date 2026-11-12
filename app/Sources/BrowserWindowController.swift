@@ -842,6 +842,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         return windows.lazy.compactMap { $0.windowController as? BrowserWindowController }.first
     }
 
+    func showToast(_ toast: ToastView) {
+        root.showToast(toast)
+    }
+
     func showQuitHint(duration: TimeInterval) {
         root.showToast("Press \u{2318}Q again to quit", duration: duration)
     }

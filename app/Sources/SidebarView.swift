@@ -1931,7 +1931,7 @@ class OverlayPanel: HoverView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        layer?.cornerRadius = Metrics.panelRadius
+        layer?.cornerRadius = 14
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         layer?.shadowColor = NSColor.black.cgColor

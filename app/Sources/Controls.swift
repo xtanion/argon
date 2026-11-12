@@ -210,7 +210,7 @@ final class ToastView: HoverView {
         label.lineBreakMode = .byClipping
         self.duration = duration
         super.init(frame: .zero)
-        layer?.cornerRadius = Metrics.panelRadius
+        layer?.cornerRadius = 14
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         layer?.shadowColor = NSColor.black.cgColor

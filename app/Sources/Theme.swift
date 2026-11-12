@@ -8,12 +8,10 @@ enum Metrics {
     static let titlebarHeight: CGFloat = 46
     static let rowHeight: CGFloat = 36
     static let tabSpacing: CGFloat = 5
-    static let rowRadius: CGFloat = 8
+    static let rowRadius: CGFloat = 12
     static let buttonRadius: CGFloat = 6
     static let cardInset: CGFloat = 8
-    static let cardRadius: CGFloat = 16
-    static let panelRadius: CGFloat = 16
-    static let inputRadius: CGFloat = 14
+    static let cardRadius: CGFloat = 10
     static let shadowRadius: CGFloat = 16
     static let shadowOpacity: Float = 0.08
     static let shadowOffset = CGSize(width: 0, height: -8)

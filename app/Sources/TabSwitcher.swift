@@ -85,7 +85,7 @@ final class TabSwitcherView: NSView {
         self.fill = fill
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = Metrics.panelRadius
+        layer?.cornerRadius = 18
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         layer?.shadowColor = NSColor.black.cgColor

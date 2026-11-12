@@ -21,7 +21,7 @@ final class FindBarView: NSVisualEffectView, NSTextFieldDelegate {
         blendingMode = .withinWindow
         state = .active
         wantsLayer = true
-        layer?.cornerRadius = Metrics.inputRadius
+        layer?.cornerRadius = 10
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
         layer?.borderWidth = 0.5

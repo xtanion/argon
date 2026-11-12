@@ -40,7 +40,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         super.init(frame: .zero)
 
         panel.wantsLayer = true
-        panel.layer?.cornerRadius = Metrics.inputRadius
+        panel.layer?.cornerRadius = Metrics.cardRadius
         panel.layer?.cornerCurve = .continuous
         panel.shadow = {
             let shadow = NSShadow()
@@ -50,7 +50,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
             return shadow
         }()
         focusRing.wantsLayer = true
-        focusRing.layer?.cornerRadius = Metrics.inputRadius + 4
+        focusRing.layer?.cornerRadius = Metrics.cardRadius + 4
         focusRing.layer?.cornerCurve = .continuous
         focusRing.layer?.backgroundColor = Palette.accent.withAlphaComponent(0.2).cgColor
         updatePanelColor()

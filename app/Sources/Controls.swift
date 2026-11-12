@@ -206,17 +206,17 @@ final class ToastView: HoverView {
     }
 
     init(message: String, icon: String? = nil, actions: [ToastAction], duration: TimeInterval = 2.5) {
-        label = .sidebarLabel(message, font: .systemFont(ofSize: 14, weight: .semibold), color: Palette.text)
+        label = .sidebarLabel(message, font: .inter(14, weight: .semibold), color: Palette.text)
         label.lineBreakMode = .byClipping
         self.duration = duration
         super.init(frame: .zero)
-        layer?.cornerRadius = 14
+        layer?.cornerRadius = Metrics.panelRadius
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.3
-        layer?.shadowRadius = 12
-        layer?.shadowOffset = CGSize(width: 0, height: -4)
+        layer?.shadowOpacity = Metrics.shadowOpacity
+        layer?.shadowRadius = Metrics.shadowRadius
+        layer?.shadowOffset = Metrics.shadowOffset
         addSubview(label)
         if let icon {
             iconView.image = .symbol(icon, size: 14, weight: .semibold)
@@ -348,14 +348,17 @@ final class ToastTextButton: HoverView {
     private let label: NSTextField
     private let isPrimary: Bool
 
+    private let fill = AccentFill()
+
     init(title: String, isPrimary: Bool) {
-        label = .sidebarLabel(title, font: .systemFont(ofSize: 13, weight: isPrimary ? .semibold : .medium),
-                              color: isPrimary ? Palette.text : Palette.pillText)
+        label = .sidebarLabel(title, font: .inter(13, weight: isPrimary ? .semibold : .medium),
+                              color: isPrimary ? .white : Palette.pillText)
         label.alignment = .center
         self.isPrimary = isPrimary
         super.init(frame: .zero)
         layer?.cornerRadius = 8
         layer?.cornerCurve = .continuous
+        if isPrimary { fill.install(in: self) }
         addSubview(label)
     }
 
@@ -363,13 +366,16 @@ final class ToastTextButton: HoverView {
 
     override func layout() {
         super.layout()
+        needsDisplay = true
         label.frame = NSRect(x: 0, y: (bounds.height - 17) / 2, width: bounds.width, height: 17)
     }
 
     override func updateLayer() {
-        layer?.backgroundColor = isPrimary ? Palette.tabActive.cgColor : isHovered ? Palette.tabHover.cgColor : nil
-        layer?.borderWidth = isPrimary && isHovered ? 0.5 : 0
-        layer?.borderColor = Palette.subtle.cgColor
+        if isPrimary {
+            fill.update(in: self, accent: Palette.accent, hovered: isHovered)
+        } else {
+            layer?.backgroundColor = isHovered ? Palette.tabHover.cgColor : nil
+        }
     }
 
     override func hoverChanged() {
@@ -384,6 +390,35 @@ final class ToastTextButton: HoverView {
         Motion.release(self)
         guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         action?()
+    }
+}
+
+@MainActor
+final class AccentFill {
+    private let gradient = CAGradientLayer()
+
+    func install(in view: NSView) {
+        view.wantsLayer = true
+        gradient.startPoint = CGPoint(x: 0, y: 0)
+        gradient.endPoint = CGPoint(x: 1, y: 1)
+        gradient.cornerCurve = .continuous
+        view.layer?.insertSublayer(gradient, at: 0)
+        view.layer?.masksToBounds = false
+    }
+
+    func update(in view: NSView, accent: NSColor, hovered: Bool) {
+        guard let layer = view.layer else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        gradient.frame = layer.bounds
+        gradient.cornerRadius = layer.cornerRadius
+        gradient.colors = Palette.accentGradient(accent)
+        CATransaction.commit()
+        layer.backgroundColor = nil
+        layer.shadowColor = accent.cgColor
+        layer.shadowOpacity = hovered ? 0.4 : 0.3
+        layer.shadowRadius = hovered ? 12 : 8
+        layer.shadowOffset = CGSize(width: 0, height: hovered ? -8 : -4)
     }
 }
 
@@ -485,8 +520,8 @@ final class ActionMenuRow: HoverView {
     private let shortcutLabel: NSTextField
 
     init(item: ActionMenuItem) {
-        titleLabel = .sidebarLabel(item.title, font: .systemFont(ofSize: 14, weight: .semibold), color: Palette.text)
-        shortcutLabel = .sidebarLabel(item.shortcut ?? "", font: .systemFont(ofSize: 13), color: Palette.faint)
+        titleLabel = .sidebarLabel(item.title, font: .inter(14, weight: .semibold), color: Palette.text)
+        shortcutLabel = .sidebarLabel(item.shortcut ?? "", font: .inter(13), color: Palette.faint)
         shortcutLabel.alignment = .right
         super.init(frame: .zero)
         iconView.image = .symbol(item.symbol, size: 16, weight: .medium)

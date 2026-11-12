@@ -522,10 +522,10 @@ final class RootView: NSView {
         layer.cornerCurve = .continuous
         layer.borderWidth = floating ? 0.5 : 0
         layer.borderColor = sidebar.cg(Palette.white(0x24))
-        layer.shadowOpacity = floating ? 1 : 0
-        layer.shadowColor = NSColor.black.withAlphaComponent(0.5).cgColor
-        layer.shadowRadius = 24
-        layer.shadowOffset = CGSize(width: 0, height: -6)
+        layer.shadowOpacity = floating ? Metrics.shadowOpacity : 0
+        layer.shadowColor = NSColor.black.cgColor
+        layer.shadowRadius = Metrics.shadowRadius
+        layer.shadowOffset = Metrics.shadowOffset
         layer.masksToBounds = false
         CATransaction.commit()
     }

@@ -1149,7 +1149,7 @@ final class TextButton: HoverView {
     private let label: NSTextField
 
     init(title: String) {
-        label = NSTextField.sidebarLabel(title, font: .systemFont(ofSize: 10.5, weight: .medium), color: Palette.faint)
+        label = NSTextField.sidebarLabel(title, font: .inter(10.5, weight: .medium), color: Palette.faint)
         super.init(frame: .zero)
         addSubview(label)
     }
@@ -1876,9 +1876,11 @@ final class SpaceHeaderView: HoverView {
     override func updateLayer() {
         layer?.cornerRadius = Metrics.rowRadius
         layer?.cornerCurve = .continuous
-        layer?.backgroundColor = isHovered ? Palette.tabHover.cgColor : nil
+        layer?.backgroundColor = isHovered ? Palette.accent.withAlphaComponent(0.16).cgColor : nil
+        titleLabel.textColor = Palette.accent
+        iconView.contentTintColor = Palette.accent
         chevron.contentsScale = window?.backingScaleFactor ?? 2
-        let tint = NSColor(cgColor: Palette.subtle.cgColor) ?? Palette.subtle
+        let tint = Palette.accent
         chevron.contents = NSImage.symbol("chevron.right", size: 12, weight: .semibold)?.tinted(tint)
     }
 
@@ -1929,13 +1931,13 @@ class OverlayPanel: HoverView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        layer?.cornerRadius = 14
+        layer?.cornerRadius = Metrics.panelRadius
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.35
-        layer?.shadowRadius = 14
-        layer?.shadowOffset = CGSize(width: 0, height: -4)
+        layer?.shadowOpacity = Metrics.shadowOpacity
+        layer?.shadowRadius = Metrics.shadowRadius
+        layer?.shadowOffset = Metrics.shadowOffset
     }
 
     override func updateLayer() {
@@ -2087,7 +2089,7 @@ final class DownloadsPanel: OverlayPanel {
     }
 
     private lazy var emptyLabel: NSTextField = {
-        let label = NSTextField.sidebarLabel("No Downloads", font: .systemFont(ofSize: 13, weight: .medium), color: Palette.faint)
+        let label = NSTextField.sidebarLabel("No Downloads", font: .inter(13, weight: .medium), color: Palette.faint)
         label.alignment = .center
         addSubview(label)
         return label
@@ -2112,8 +2114,8 @@ final class DownloadRow: HoverView, NSDraggingSource {
     }()
 
     private let thumbnail = ThumbnailView()
-    private let nameLabel = NSTextField.sidebarLabel(font: .systemFont(ofSize: 14, weight: .medium), color: Palette.text)
-    private let detailLabel = NSTextField.sidebarLabel(font: .systemFont(ofSize: 12.5), color: Palette.faint)
+    private let nameLabel = NSTextField.sidebarLabel(font: .inter(14, weight: .medium), color: Palette.text)
+    private let detailLabel = NSTextField.sidebarLabel(font: .inter(12.5), color: Palette.faint)
     private let ring = LoadingRing()
     private var thumbnailURL: URL?
     private var mouseDownEvent: NSEvent?
@@ -2755,10 +2757,10 @@ final class FavoritesDropZoneView: NSView {
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         iconView.image = .symbol("star.circle.fill", size: 16)
         iconView.contentTintColor = Palette.icon
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.font = .inter(13, weight: .semibold)
         titleLabel.textColor = Palette.text
         titleLabel.alignment = .center
-        detailLabel.font = .systemFont(ofSize: 11)
+        detailLabel.font = .inter(11)
         detailLabel.textColor = Palette.subtle
         detailLabel.alignment = .center
         detailLabel.maximumNumberOfLines = 2
@@ -2979,7 +2981,7 @@ final class SiteControlsPanel: OverlayPanel {
     }
 
     private func addHeader(_ title: String, y: CGFloat) -> CGFloat {
-        let label = NSTextField.sidebarLabel(title, font: .systemFont(ofSize: 12, weight: .semibold), color: Palette.subtle)
+        let label = NSTextField.sidebarLabel(title, font: .inter(12, weight: .semibold), color: Palette.subtle)
         label.frame = NSRect(x: Self.inset + 2, y: y, width: Self.width - 2 * Self.inset, height: 16)
         addSubview(label)
         return y + 16 + 8
@@ -3071,8 +3073,8 @@ final class PanelSettingRow: HoverView {
 
     init(symbol: String, title: String, detail: String, action: @escaping () -> Void) {
         self.action = action
-        titleLabel = .sidebarLabel(title, font: .systemFont(ofSize: 13, weight: .medium), color: Palette.text)
-        detailLabel = .sidebarLabel(detail, font: .systemFont(ofSize: 11.5), color: Palette.subtle)
+        titleLabel = .sidebarLabel(title, font: .inter(13, weight: .medium), color: Palette.text)
+        detailLabel = .sidebarLabel(detail, font: .inter(11.5), color: Palette.subtle)
         super.init(frame: .zero)
         iconBackground.wantsLayer = true
         iconBackground.layer?.cornerRadius = 15
@@ -3128,7 +3130,7 @@ final class SecurityPill: HoverView {
         case "chrome", "about": ("gearshape.fill", "Argon Page")
         default: ("info.circle.fill", "Site Info")
         }
-        label = .sidebarLabel(text, font: .systemFont(ofSize: 13, weight: .medium), color: Palette.text)
+        label = .sidebarLabel(text, font: .inter(13, weight: .medium), color: Palette.text)
         super.init(frame: .zero)
         toolTip = "Site Settings"
         imageView.image = .symbol(symbol, size: 11)
@@ -3175,7 +3177,7 @@ final class NowPlayingView: NSView {
     weak var sidebar: SidebarView?
     private(set) var tab: BrowserTab?
     private let card = CALayer()
-    private let titleLabel = NSTextField.sidebarLabel("", font: .systemFont(ofSize: 12.5, weight: .medium))
+    private let titleLabel = NSTextField.sidebarLabel("", font: .inter(12.5, weight: .medium))
     private let pipButton = IconButton(symbol: "pip", size: 12, toolTip: "Picture in Picture")
     private let closeButton = IconButton(symbol: "xmark", size: 11, toolTip: "Close")
     private let iconButton = IconButton(symbol: "globe", size: 13, toolTip: "Go to Tab")

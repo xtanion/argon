@@ -20,10 +20,10 @@ final class ThemeEditorController: NSViewController, NSTextFieldDelegate {
     private var color: NSColor?
     private let opacity: Double
     private var swatches: [SwatchView] = []
-    private let titleLabel = NSTextField.sidebarLabel("Theme", font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
+    private let titleLabel = NSTextField.sidebarLabel("Theme", font: .inter(13, weight: .semibold), color: .labelColor)
     private let hexField = NSTextField()
     private let resetButton = NSButton(title: "Reset", target: nil, action: nil)
-    private let opacityLabel = NSTextField.sidebarLabel("Opacity", font: .systemFont(ofSize: 12, weight: .medium), color: .labelColor)
+    private let opacityLabel = NSTextField.sidebarLabel("Opacity", font: .inter(12, weight: .medium), color: .labelColor)
     private let opacityValue = NSTextField.sidebarLabel("", font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular), color: .secondaryLabelColor)
     private let opacitySlider = WaveSlider()
 
@@ -212,7 +212,7 @@ final class IconPickerController: NSViewController {
         let height = Self.header + CGFloat(rows) * Self.cell + Self.inset
         let view = FlippedView(frame: NSRect(x: 0, y: 0, width: width, height: height))
 
-        segmented.font = .systemFont(ofSize: 13)
+        segmented.font = .inter(13)
         segmented.segmentStyle = .rounded
         segmented.selectedSegmentBezelColor = .controlAccentColor
         segmented.setWidth(56, forSegment: 0)

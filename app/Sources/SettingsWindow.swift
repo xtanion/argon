@@ -223,7 +223,7 @@ final class SettingsTabButton: NSView {
         iconView.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)?
             .withSymbolConfiguration(.init(pointSize: 17, weight: .regular))
         iconView.imageScaling = .scaleNone
-        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.font = .inter(11, weight: .medium)
         label.alignment = .center
         for view in [iconView, label] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -300,9 +300,9 @@ enum SettingsStyle {
     static let selection = Palette.dynamic(dark: NSColor(white: 1, alpha: 0.09)) { NSColor(white: 0, alpha: 0.07) }
     static let hover = Palette.dynamic(dark: NSColor(white: 1, alpha: 0.045)) { NSColor(white: 0, alpha: 0.035) }
 
-    static let title = NSFont.systemFont(ofSize: 13)
-    static let subtitle = NSFont.systemFont(ofSize: 11.5)
-    static let header = NSFont.systemFont(ofSize: 12, weight: .medium)
+    static let title = NSFont.inter(13)
+    static let subtitle = NSFont.inter(11.5)
+    static let header = NSFont.inter(12, weight: .medium)
 
     static func badge(_ symbol: String, color: NSColor, size: CGFloat = 22) -> NSImage {
         let isEmoji = symbol.first.map { !$0.isASCII } ?? false
@@ -320,14 +320,7 @@ enum SettingsStyle {
         }
     }
 
-    static func accent(for space: Space) -> NSColor {
-        guard let custom = space.customColor?.usingColorSpace(.sRGB) else {
-            return NSColor(hue: space.hue, saturation: 0.58, brightness: 0.88, alpha: 1)
-        }
-        if custom.saturationComponent < 0.08 { return NSColor(white: 0.5, alpha: 1) }
-        return NSColor(hue: custom.hueComponent, saturation: max(custom.saturationComponent, 0.45),
-                       brightness: max(custom.brightnessComponent, 0.78), alpha: 1)
-    }
+    static func accent(for space: Space) -> NSColor { Palette.accent(hue: space.hue, custom: space.customColor) }
 
     static func badge(for space: Space, size: CGFloat = 22) -> NSImage {
         let symbol = space.symbol.isEmpty ? "circle.fill" : SpaceSymbols.displayName(space.symbol, active: true)
@@ -702,7 +695,7 @@ final class SettingsListRow: NSView {
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let detailLabel = NSTextField(labelWithString: detail ?? "")
-        detailLabel.font = .systemFont(ofSize: 12)
+        detailLabel.font = .inter(12)
         detailLabel.textColor = .secondaryLabelColor
         detailLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         let iconView = NSImageView()

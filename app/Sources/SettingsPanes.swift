@@ -88,7 +88,7 @@ final class GeneralSettingsPane: SettingsPane {
         var parts = ["Argon " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")]
         if let chromium = Self.chromiumVersion { parts.append("Chromium " + chromium) }
         let label = NSTextField(labelWithString: parts.joined(separator: "  \u{00B7}  "))
-        label.font = .systemFont(ofSize: 11.5)
+        label.font = .inter(11.5)
         label.textColor = .tertiaryLabelColor
         let link = SettingsButton("Chromium Settings\u{2026}") { [weak self] in
             self?.browser?.openChromePage("settings", profile: nil)
@@ -96,7 +96,7 @@ final class GeneralSettingsPane: SettingsPane {
         link.bezelStyle = .inline
         link.isBordered = false
         link.contentTintColor = .secondaryLabelColor
-        link.font = .systemFont(ofSize: 11.5)
+        link.font = .inter(11.5)
         let stack = NSStackView(views: [label, link])
         stack.spacing = 10
         return stack

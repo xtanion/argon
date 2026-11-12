@@ -17,6 +17,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     var frameColor: NSColor { didSet { updatePanelColor() } }
 
     private let panel = NSView()
+    private let focusRing = NSView()
     private let glyph = NSImageView()
     private let field = NSTextField()
     private let divider = HairlineView(inset: 0, color: Palette.white(0x1F))
@@ -39,15 +40,19 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         super.init(frame: .zero)
 
         panel.wantsLayer = true
-        panel.layer?.cornerRadius = Metrics.cardRadius
+        panel.layer?.cornerRadius = Metrics.inputRadius
         panel.layer?.cornerCurve = .continuous
         panel.shadow = {
             let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
-            shadow.shadowBlurRadius = 40
-            shadow.shadowOffset = NSSize(width: 0, height: -12)
+            shadow.shadowColor = NSColor.black.withAlphaComponent(CGFloat(Metrics.shadowOpacity))
+            shadow.shadowBlurRadius = 2 * Metrics.shadowRadius
+            shadow.shadowOffset = Metrics.shadowOffset
             return shadow
         }()
+        focusRing.wantsLayer = true
+        focusRing.layer?.cornerRadius = Metrics.inputRadius + 4
+        focusRing.layer?.cornerCurve = .continuous
+        focusRing.layer?.backgroundColor = Palette.accent.withAlphaComponent(0.2).cgColor
         updatePanelColor()
 
         glyph.image = .symbol("magnifyingglass", size: 18)
@@ -69,6 +74,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         field.cell?.wraps = false
 
         for view in [glyph, field, divider] as [NSView] { panel.addSubview(view) }
+        addSubview(focusRing)
         addSubview(panel)
         rebuildSuggestions()
     }
@@ -88,9 +94,11 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         field.currentEditor()?.selectAll(nil)
         guard !Motion.reduced else { return }
         panel.alphaValue = 0
+        focusRing.alphaValue = 0
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.12
             panel.animator().alphaValue = 1
+            focusRing.animator().alphaValue = 1
         }
     }
 
@@ -104,6 +112,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         }
         let top = max(20, bounds.height * 0.34 - header)
         panel.frame = NSRect(x: (bounds.width - width) / 2, y: top, width: width, height: height)
+        focusRing.frame = panel.frame.insetBy(dx: -4, dy: -4)
 
         let ph = panel.bounds.height
         func flip(_ y: CGFloat, _ h: CGFloat) -> CGFloat { ph - y - h }
@@ -377,7 +386,7 @@ final class CommandRowView: NSView {
     private let icon = NSImageView()
     private let title = NSTextField.sidebarLabel(font: Typography.commandTitle)
     private let subtitle = NSTextField.sidebarLabel(font: Typography.commandSubtitle, color: Palette.subtle)
-    private let switchLabel = NSTextField.sidebarLabel("Switch to Tab", font: .systemFont(ofSize: 12, weight: .medium), color: Palette.subtle)
+    private let switchLabel = NSTextField.sidebarLabel("Switch to Tab", font: .inter(12, weight: .medium), color: Palette.subtle)
     private let arrowBox = NSView()
     private let arrow = NSImageView()
     private let isTab: Bool

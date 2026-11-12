@@ -323,7 +323,7 @@ final class ShortcutDetailView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         caps.spacing = 8
-        titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        titleLabel.font = .inter(15, weight: .semibold)
         titleLabel.lineBreakMode = .byWordWrapping
         titleLabel.maximumNumberOfLines = 2
         menuLabel.font = SettingsStyle.title
@@ -415,7 +415,7 @@ final class LargeKeycapView: NSView {
     private static func attributed(_ text: String, color: NSColor) -> NSAttributedString {
         let size: CGFloat = text.count > 2 ? 17 : 26
         return NSAttributedString(string: text, attributes: [
-            .font: NSFont.systemFont(ofSize: size, weight: .semibold),
+            .font: NSFont.inter(size, weight: .semibold),
             .foregroundColor: color,
         ])
     }
@@ -449,7 +449,7 @@ final class KeycapView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.font = .inter(12, weight: .medium)
         label.textColor = .secondaryLabelColor
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)

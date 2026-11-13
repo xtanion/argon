@@ -109,16 +109,30 @@ enum Palette {
         return NSColor(hue: rgb.hueComponent, saturation: max(rgb.saturationComponent, 0.6), brightness: 0.42, alpha: 1)
     }
 
+    static var spaceTitle: NSColor {
+        guard let rgb = accent.usingColorSpace(.sRGB), rgb.saturationComponent < 0.08 else { return accent }
+        return subtle
+    }
+
     static func accentGradient(_ accent: NSColor) -> [CGColor] {
         [accent.cgColor, (accent.blended(withFraction: 0.35, of: .white) ?? accent).cgColor]
     }
     static let minimumOpacity = 0.21
 
-    static func frameWash(_ color: NSColor) -> NSColor {
-        guard let rgb = color.usingColorSpace(.sRGB) else { return color }
+    // Fitted to Arc over the same wallpaper: at the bottom of the slider Arc
+    // lays a faint near-white wash over a clear blur, not a dark one, and the
+    // space colour takes over as opacity rises.
+    static func frameWash(_ color: NSColor, opacity: CGFloat) -> NSColor {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return color.withAlphaComponent(opacity) }
         let floor: CGFloat = 24 / 255, span: CGFloat = 220 / 255
-        return NSColor(srgbRed: floor + rgb.redComponent * span, green: floor + rgb.greenComponent * span,
-                       blue: floor + rgb.blueComponent * span, alpha: 1)
+        let u = min(max((opacity - minimumOpacity) / (1 - minimumOpacity), 0), 1)
+        let lift = 0.9 * (1 - u) * (1 - u)
+        func channel(_ c: CGFloat) -> CGFloat {
+            let base = floor + c * span
+            return base + (1 - base) * lift
+        }
+        return NSColor(srgbRed: channel(rgb.redComponent), green: channel(rgb.greenComponent),
+                       blue: channel(rgb.blueComponent), alpha: 0.15 + 0.85 * u)
     }
 
     // Flattens a translucent palette color onto `base`, for surfaces drawn over page content.

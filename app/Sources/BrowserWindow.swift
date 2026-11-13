@@ -142,7 +142,7 @@ final class FrameBackdropView: NSView {
                 let view = NSVisualEffectView(frame: bounds)
                 view.autoresizingMask = [.width, .height]
                 view.blendingMode = .behindWindow
-                view.material = .underWindowBackground
+                view.material = .hudWindow
                 view.state = .active
                 addSubview(view, positioned: .below, relativeTo: tint)
                 blur = view
@@ -332,7 +332,7 @@ final class RootView: NSView {
     private func applyTint(_ color: NSColor, opacity: CGFloat) {
         shownOpacity = opacity
         if opacity < 1 { setTranslucent(true) }
-        backdrop.tintColor = opacity < 1 ? Palette.frameWash(color).withAlphaComponent(opacity).cgColor : color.cgColor
+        backdrop.tintColor = opacity < 1 ? Palette.frameWash(color, opacity: opacity).cgColor : color.cgColor
         card.solidBase = opacity < 1 ? color : nil
     }
 

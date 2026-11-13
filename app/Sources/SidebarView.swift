@@ -1984,11 +1984,11 @@ final class SpaceHeaderView: HoverView {
         layer?.cornerRadius = Metrics.rowRadius
         layer?.cornerCurve = .continuous
         layer?.backgroundColor = isHovered ? Palette.accent.withAlphaComponent(0.16).cgColor : nil
-        titleLabel.textColor = Palette.accent
-        iconView.contentTintColor = Palette.accent
+        let tint = Palette.spaceTitle
+        titleLabel.textColor = tint
+        iconView.contentTintColor = tint
         chevron.contentsScale = window?.backingScaleFactor ?? 2
-        let tint = Palette.accent
-        chevron.contents = NSImage.symbol("chevron.right", size: 12, weight: .semibold)?.tinted(tint)
+        chevron.contents = NSImage.symbol("chevron.right", size: 12, weight: .semibold)?.tinted(NSColor(cgColor: tint.cgColor) ?? tint)
     }
 
     override func hoverChanged() {

@@ -9,6 +9,10 @@ final class GeneralSettingsPane: SettingsPane {
     private let chip = DefaultBrowserChip()
     private let folderPopUp = SettingsPopUp { _ in }
     private let sidebarSidePopUp = SettingsPopUp { item in Preferences.sidebarOnRight = item.tag == 1 }
+    private let archivePopUp = SettingsPopUp { item in
+        Preferences.archiveAfterHours = item.tag
+        BrowserWindowController.current?.archiveIdleTabs()
+    }
 
     @objc private func syncSidebarSide() {
         sidebarSidePopUp.selectItem(withTag: Preferences.sidebarOnRight ? 1 : 0)
@@ -38,6 +42,17 @@ final class GeneralSettingsPane: SettingsPane {
         syncSidebarSide()
         NotificationCenter.default.addObserver(self, selector: #selector(syncSidebarSide), name: .sidebarSideDidChange, object: nil)
 
+        let archive = SettingsCard([
+            SettingsRow(title: "Archive tabs after", subtitle: "Unpinned tabs you haven't looked at in this long are archived. Find them under History \u{2192} Archived Tabs or search for them in the command bar.",
+                        badge: SettingsStyle.badge("archivebox.fill", color: .systemOrange),
+                        accessory: archivePopUp, wraps: true),
+        ])
+        for choice in Preferences.archiveChoices {
+            archivePopUp.addItem(withTitle: choice.title)
+            archivePopUp.lastItem?.tag = choice.hours
+        }
+        archivePopUp.selectItem(withTag: Preferences.archiveAfterHours)
+
         let media = SettingsCard([
             SettingsRow(title: "Automatic Picture in Picture",
                         subtitle: "Videos keep playing in a floating window when you switch tabs or Spaces. Turn it off for one site from its site controls.",
@@ -65,7 +80,7 @@ final class GeneralSettingsPane: SettingsPane {
                         wraps: true),
         ])
 
-        let column = NSStackView.settingsColumn([chip, quitting, updates, media, capture, profile])
+        let column = NSStackView.settingsColumn([chip, quitting, archive, updates, media, capture, profile])
         column.setCustomSpacing(20, after: chip)
         view.pinCentered(column, width: SettingsStyle.width, top: contentInset)
 
@@ -506,9 +521,9 @@ final class SpacesSettingsPane: SettingsPane, NSTextFieldDelegate {
 
 @MainActor
 final class LinksSettingsPane: SettingsPane, NSTextFieldDelegate {
-    private let destinationPopUp = SettingsPopUp { item in
-        LinkRouter.destination = item.tag == 0 ? .littleArgon : .activeSpace
-    }
+    private let hotKeySwitch = SettingsSwitch(isOn: true) { LittleArgon.hotKeyEnabled = $0 }
+    private let modifierClickSwitch = SettingsSwitch(isOn: true) { LittleArgon.modifierClickEnabled = $0 }
+    private let externalLinksSwitch = SettingsSwitch(isOn: true) { LinkRouter.destination = $0 ? .littleArgon : .activeSpace }
     private let list = SettingsList<LinkRule>(title: "Link Rules")
     private let patternField = NSTextField()
     private let spacePopUp = SettingsPopUp { _ in }
@@ -517,15 +532,17 @@ final class LinksSettingsPane: SettingsPane, NSTextFieldDelegate {
 
     override func loadView() {
         super.loadView()
-        for (tag, title) in ["Little Argon", "Current Space"].enumerated() {
-            destinationPopUp.addItem(withTitle: title)
-            destinationPopUp.lastItem?.tag = tag
-        }
-        let destination = SettingsCard([
-            SettingsRow(title: "Open links from other apps in",
-                        subtitle: "Little Argon is a small window you can move into a Space with one click.",
+        let little = SettingsCard([
+            SettingsRow(title: "Open Little Argon when I press \u{2325}\u{2318}N in any app",
+                        subtitle: "Little Argon is a small window for quick lookups. Move it into a Space with \u{2318}O.",
                         badge: SettingsStyle.badge("macwindow", color: .systemBlue),
-                        accessory: destinationPopUp, wraps: true),
+                        accessory: hotKeySwitch, wraps: true),
+            SettingsRow(title: "Open Little Argon when clicking links with \u{2325}\u{2318} held",
+                        badge: SettingsStyle.badge("cursorarrow.click", color: .systemIndigo),
+                        accessory: modifierClickSwitch),
+            SettingsRow(title: "Links from other apps open in Little Argon",
+                        badge: SettingsStyle.badge("arrow.up.forward.app", color: .systemTeal),
+                        accessory: externalLinksSwitch),
         ])
 
         let intro = NSTextField(wrappingLabelWithString:
@@ -555,15 +572,17 @@ final class LinksSettingsPane: SettingsPane, NSTextFieldDelegate {
         list.setFooter([removeButton])
         list.heightAnchor.constraint(equalToConstant: 250).isActive = true
 
-        let column = NSStackView.settingsColumn([destination, intro, newRule, list])
-        column.setCustomSpacing(22, after: destination)
+        let column = NSStackView.settingsColumn([little, intro, newRule, list])
+        column.setCustomSpacing(22, after: little)
         view.pinCentered(column, width: SettingsStyle.width, top: contentInset)
         NotificationCenter.default.addObserver(self, selector: #selector(rulesChanged), name: .linkRulesDidChange, object: nil)
     }
 
     override func reload() {
         _ = view
-        destinationPopUp.selectItem(withTag: LinkRouter.destination == .littleArgon ? 0 : 1)
+        hotKeySwitch.state = LittleArgon.hotKeyEnabled ? .on : .off
+        modifierClickSwitch.state = LittleArgon.modifierClickEnabled ? .on : .off
+        externalLinksSwitch.state = LinkRouter.destination == .littleArgon ? .on : .off
         let selectedID = spacePopUp.selectedItem?.representedObject as? String
         spacePopUp.removeAllItems()
         for space in browser?.allSpaces ?? [] {

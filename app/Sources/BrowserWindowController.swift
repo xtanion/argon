@@ -1,7 +1,7 @@
 import AppKit
 
 @MainActor
-final class BrowserWindowController: NSWindowController, NSWindowDelegate, BrowserTabObserver {
+final class BrowserWindowController: NSWindowController, NSWindowDelegate, BrowserTabObserver, CommandBarHost {
     private(set) var spaces: [Space]
     private(set) var activeIndex: Int
     private let root = RootView()
@@ -38,6 +38,54 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         applyFrame(animated: false)
         NotificationCenter.default.addObserver(self, selector: #selector(downloadsChanged(_:)), name: .downloadsDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(sidebarSideChanged(_:)), name: .sidebarSideDidChange, object: nil)
+        archiveTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { _ in
+            MainActor.assumeIsolated { BrowserWindowController.current?.archiveIdleTabs() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in self?.archiveIdleTabs() }
+    }
+
+    private var archiveTimer: Timer?
+
+    // MARK: Auto-archive
+
+    // Unpinned tabs not looked at for the chosen time leave the sidebar and
+    // go to the archive. Tabs playing media or in Picture in Picture stay.
+    func archiveIdleTabs() {
+        guard let interval = Preferences.archiveAfter else { return }
+        let now = Date()
+        displayedTab?.lastViewed = now
+        let cutoff = now.addingTimeInterval(-interval)
+        var archived: [ArchivedTab] = []
+        var removed: [BrowserTab] = []
+        for space in spaces {
+            let stale = space.tabs.filter { tab in
+                guard tab !== displayedTab, tab.lastViewed < cutoff else { return false }
+                if let page = tab.tab, page.isPlayingMedia || page.isInPictureInPicture { return false }
+                return true
+            }
+            guard !stale.isEmpty else { continue }
+            space.tabs.removeAll { tab in stale.contains { $0 === tab } }
+            if let active = space.activeTab, stale.contains(where: { $0 === active }) {
+                space.activeTab = space.allTabs.filter { $0.isLoaded || !$0.isPinned }.max { $0.lastActive < $1.lastActive }
+            }
+            for tab in stale {
+                guard let url = tab.url, url.scheme != "about" else { continue }
+                archived.append(ArchivedTab(url: url.absoluteString, title: tab.title, favicon: tab.favicon?.faviconData,
+                                            spaceID: space.id, spaceName: space.name, archived: now))
+            }
+            removed += stale
+        }
+        guard !removed.isEmpty else { return }
+        removed.forEach { $0.close() }
+        TabArchive.shared.add(archived)
+        refreshSidebar(animated: true)
+        scheduleSave()
+    }
+
+    func restoreArchived(_ url: URL, spaceID: String) {
+        let target = spaces.firstIndex { $0.id == spaceID }
+        if let target, target != activeIndex { selectSpace(target) }
+        openTab(url)
     }
 
     @objc private func sidebarSideChanged(_ notification: Notification) {
@@ -133,6 +181,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     private func showActiveTab() {
         let tab = activeSpace.activeTab
         if displayedTab !== tab {
+            displayedTab?.lastViewed = Date()
             closeFindBar(focusPage: false)
             enterAutoPictureInPicture(leaving: displayedTab)
             displayedTab?.captureSnapshot()
@@ -146,6 +195,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             return
         }
         tab.lastActive = Date()
+        tab.lastViewed = Date()
         let page = tab.materialize(in: profile)
         root.card.show(page.view)
         page.isVisible = true
@@ -638,6 +688,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         }
     }
 
+    var commandBarProfile: Profile? { activeSpace.profile }
+
+    func commandBarOpenBlank() {
+        dismissCommandBar()
+        openTab(nil)
+    }
+
     func commandBar(_ bar: CommandBarView, switchTo tab: BrowserTab) {
         dismissCommandBar()
         select(tab)
@@ -665,6 +722,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     @objc func newTab(_ sender: Any?) {
         if root.commandBar?.mode == .newTab { dismissCommandBar() } else { showCommandBar(.newTab) }
+    }
+
+    @objc func newLittleWindow(_ sender: Any?) {
+        LittleLauncher.toggle(browser: self)
     }
 
     @objc func openLocation(_ sender: Any?) {
@@ -1070,6 +1131,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             return
         }
         let space = spaces[index]
+        if disposition == .foreground || disposition == .background, LittleArgon.modifierClickHeld {
+            LittleWindowController.open(newTab, space: space, browser: self)
+            return
+        }
         let position = (space.tabs.firstIndex { $0 === tab } ?? -1) + 1
         insertOpened(newTab, in: space, at: disposition == .background ? position : 0, disposition: disposition)
     }
@@ -1179,7 +1244,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
                     pinned: Self.save(space.pinned),
                     tabs: space.tabs.compactMap { tab in
                         guard let url = tab.url else { return nil }
-                        return SavedState.SavedTab(url: url.absoluteString, title: tab.title, favicon: tab.favicon?.faviconData)
+                        return SavedState.SavedTab(url: url.absoluteString, title: tab.title, favicon: tab.favicon?.faviconData,
+                                                   viewed: tab.lastViewed.timeIntervalSince1970)
                     },
                     active: space.activeTab.flatMap { active in
                         (space.pinnedTabs + space.tabs.filter { $0.url != nil }).firstIndex { $0 === active }

@@ -3,12 +3,22 @@ import AppKit
 @MainActor
 final class LittleWindowController: NSWindowController, NSWindowDelegate, BrowserTabObserver {
     private static var open: [LittleWindowController] = []
-    private static let size = NSSize(width: 920, height: 660)
+    private static let defaultSize = NSSize(width: 920, height: 660)
     private static let expandDuration: TimeInterval = 0.48
     private static let expandCurve = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
 
     static func open(_ url: URL, space: Space, profile: Profile, browser: BrowserWindowController) {
-        let controller = LittleWindowController(url: url, space: space, profile: profile, browser: browser)
+        let page = BrowserTab(url: url)
+        page.materialize(in: profile).isVisible = true
+        present(LittleWindowController(page: page, space: space, browser: browser))
+    }
+
+    static func open(_ tab: Tab, space: Space, browser: BrowserWindowController) {
+        tab.isVisible = true
+        present(LittleWindowController(page: BrowserTab(tab: tab), space: space, browser: browser))
+    }
+
+    private static func present(_ controller: LittleWindowController) {
         open.append(controller)
         controller.present()
     }
@@ -18,29 +28,31 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
     private weak var browser: BrowserWindowController?
     private let root = LittleRootView()
     private var adopted = false
+    private var tracksFrame = false
+    private var picker: LittleSpacePicker?
+    private var pickerMonitor: Any?
     private lazy var passwordOffers = PasswordOfferPresenter { [weak self] toast in self?.root.showToast(toast) }
 
-    private init(url: URL, space: Space, profile: Profile, browser: BrowserWindowController) {
+    private init(page: BrowserTab, space: Space, browser: BrowserWindowController) {
+        tab = page
         self.space = space
         self.browser = browser
-        tab = BrowserTab(url: url)
         let window = BrowserWindow()
         window.minSize = NSSize(width: 420, height: 300)
         super.init(window: window)
         window.delegate = self
         window.contentView = root
         tab.observer = self
-        let page = tab.materialize(in: profile)
-        root.card.show(page.view)
-        page.isVisible = true
+        if let view = tab.tab?.view { root.card.show(view) }
         root.setFrameColor(space.frameColor)
-        let name: NSAppearance.Name = space.frameColor.isDarkFrame ? .darkAqua : .aqua
-        window.appearance = NSAppearance(named: name)
-        root.openButton.title = "Open in \(space.name)"
+        window.appearance = NSAppearance(named: space.frameColor.isDarkFrame ? .darkAqua : .aqua)
+        root.profileLabel.stringValue = space.profileIdentifier
+        root.openButton.spaceName = space.name
         root.openButton.accent = Palette.accent(hue: space.hue, custom: space.customColor, on: space.frameColor)
         root.openButton.action = { [weak self] in self?.openInBrowser(space: nil) }
+        root.spacesButton.action = { [weak self] in self?.toggleSpacePicker() }
         root.copyButton.action = { [weak self] in self?.copyURL(nil) }
-        root.menuButton.action = { [weak self] in self?.showMenu() }
+        root.backButton.action = { [weak self] in self?.tab.tab?.goBack() }
         refreshHeader()
     }
 
@@ -49,14 +61,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
 
     private func present() {
         guard let window else { return }
-        let screen = (NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main)?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let size = NSSize(width: min(Self.size.width, screen.width - 40), height: min(Self.size.height, screen.height - 40))
-        let cascade = CGFloat(Self.open.count - 1) * 26
-        var origin = NSPoint(x: screen.midX - size.width / 2 + cascade, y: screen.midY - size.height / 2 - cascade)
-        origin.x = min(max(origin.x, screen.minX), screen.maxX - size.width)
-        origin.y = min(max(origin.y, screen.minY), screen.maxY - size.height)
-        let target = NSRect(origin: origin, size: size)
+        let target = initialFrame()
         let animated = !Motion.reduced
         window.setFrame(animated ? target.insetBy(dx: target.width * 0.06, dy: target.height * 0.06) : target, display: false)
         window.alphaValue = animated ? 0 : 1
@@ -64,43 +69,145 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         tab.tab?.focus()
-        guard animated else { return }
-        NSAnimationContext.runAnimationGroup { context in
+        guard animated else {
+            tracksFrame = true
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ context in
             context.duration = Self.expandDuration
             context.timingFunction = Self.expandCurve
             window.animator().setFrame(target, display: true)
             window.animator().alphaValue = 1
-        }
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated { self?.tracksFrame = true }
+        })
     }
 
+    // Little Argon comes back at the size and place it was last left, like any Mac window.
+    private func initialFrame() -> NSRect {
+        let mouseScreen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
+        let cascade = CGFloat(Self.open.count - 1) * 26
+        if let saved = LittleArgon.lastFrame,
+           let screen = NSScreen.screens.max(by: { Self.overlap(saved, $0.visibleFrame) < Self.overlap(saved, $1.visibleFrame) }),
+           Self.overlap(saved, screen.visibleFrame) > 0.8 * saved.width * saved.height {
+            return Self.fit(saved.offsetBy(dx: cascade, dy: -cascade), in: screen.visibleFrame)
+        }
+        let visible = mouseScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let size = LittleArgon.lastFrame?.size ?? Self.defaultSize
+        let frame = NSRect(x: visible.midX - size.width / 2 + cascade, y: visible.midY - size.height / 2 - cascade,
+                           width: size.width, height: size.height)
+        return Self.fit(frame, in: visible)
+    }
+
+    private static func overlap(_ a: NSRect, _ b: NSRect) -> CGFloat {
+        let r = a.intersection(b)
+        return r.isNull ? 0 : r.width * r.height
+    }
+
+    private static func fit(_ frame: NSRect, in visible: NSRect) -> NSRect {
+        var frame = frame
+        frame.size.width = min(frame.width, visible.width)
+        frame.size.height = min(frame.height, visible.height)
+        frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+        frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+        return frame
+    }
+
+    private func rememberFrame() {
+        guard tracksFrame, !adopted, let window, !window.styleMask.contains(.fullScreen) else { return }
+        LittleArgon.lastFrame = window.frame
+    }
+
+    func windowDidResize(_ notification: Notification) { rememberFrame() }
+    func windowDidMove(_ notification: Notification) { rememberFrame() }
+
     private func refreshHeader() {
-        root.titleLabel.stringValue = tab.title.isEmpty ? (tab.url.flatMap(LinkRouter.displayHost(of:)) ?? "") : tab.title
-        root.hostLabel.stringValue = tab.url.flatMap(LinkRouter.displayHost(of:)) ?? ""
-        root.favicon = tab.favicon
-        window?.title = root.titleLabel.stringValue
+        let host = tab.url.flatMap(LinkRouter.displayHost(of:)) ?? ""
+        root.hostLabel.stringValue = host
+        root.backButton.isHidden = !(tab.tab?.canGoBack ?? false)
+        window?.title = tab.title.isEmpty ? host : tab.title
         root.needsLayout = true
     }
 
-    private func showMenu() {
-        guard let browser else { return }
-        var entries: [ActionMenuEntry] = [
-            .item(ActionMenuItem(title: "Copy Link", shortcut: nil) { [weak self] in self?.copyURL(nil) }),
-            .separator,
-        ]
-        for space in browser.allSpaces where space.profileIdentifier == self.space.profileIdentifier {
-            entries.append(.item(ActionMenuItem(title: "Open in \(space.name)", shortcut: nil) { [weak self] in
-                self?.openInBrowser(space: space)
-            }))
+    // MARK: Moving to a Space
+
+    private func toggleSpacePicker() {
+        if picker != nil {
+            dismissSpacePicker()
+        } else {
+            showSpacePicker()
         }
-        entries += [
-            .separator,
-            .item(ActionMenuItem(title: "Link Routing\u{2026}", shortcut: nil) {
-                SettingsWindowController.shared.show(.links)
-            }),
-        ]
-        let menu = ActionMenu(entries: entries)
-        root.actionMenu = menu
-        menu.show(relativeTo: root.menuButton)
+    }
+
+    private func showSpacePicker() {
+        guard picker == nil, let browser else { return }
+        let picker = LittleSpacePicker(spaces: browser.allSpaces, frameColor: space.frameColor)
+        picker.onChoose = { [weak self] space in
+            self?.dismissSpacePicker()
+            self?.move(to: space)
+        }
+        picker.onCancel = { [weak self] in self?.dismissSpacePicker() }
+        self.picker = picker
+        root.showPicker(picker)
+        root.spacesButton.isActive = true
+        pickerMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, let picker = self.picker else { return event }
+            if event.window !== self.window {
+                self.dismissSpacePicker()
+                return event
+            }
+            let point = picker.convert(event.locationInWindow, from: nil)
+            let onToggle = self.root.spacesButton.bounds.contains(self.root.spacesButton.convert(event.locationInWindow, from: nil))
+            if !picker.bounds.contains(point), !onToggle { self.dismissSpacePicker() }
+            return event
+        }
+    }
+
+    private func dismissSpacePicker() {
+        if let pickerMonitor { NSEvent.removeMonitor(pickerMonitor) }
+        pickerMonitor = nil
+        guard let picker else { return }
+        self.picker = nil
+        root.spacesButton.isActive = false
+        picker.dismiss()
+        tab.tab?.focus()
+    }
+
+    private func move(to target: Space) {
+        guard let browser, browser.liveSpace(target) === target else { return }
+        if target.profileIdentifier == space.profileIdentifier {
+            openInBrowser(space: target)
+            return
+        }
+        guard !LittleArgon.skipProfileWarning, let window else {
+            reopen(in: target)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Move tab to \(target.name)?"
+        alert.informativeText = "\(target.name) is using a different profile, so you might get logged out or lose your progress in this tab.\n\nThis can't be undone."
+        alert.addButton(withTitle: "Move It")
+        alert.addButton(withTitle: "Cancel")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't ask again"
+        alert.beginSheetModal(for: window) { [weak self] response in
+            MainActor.assumeIsolated {
+                guard response == .alertFirstButtonReturn else { return }
+                if alert.suppressionButton?.state == .on { LittleArgon.skipProfileWarning = true }
+                self?.reopen(in: target)
+            }
+        }
+    }
+
+    // Pages can't cross profiles, so the address opens fresh in the other profile.
+    private func reopen(in target: Space) {
+        guard let browser, !adopted, let url = tab.url else { return }
+        adopted = true
+        browser.openTab(url, in: target)
+        browser.bringToFront()
+        tab.observer = nil
+        tab.close()
+        close()
     }
 
     private func openInBrowser(space target: Space?) {
@@ -109,7 +216,9 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
             NSSound.beep()
             return
         }
+        rememberFrame()
         adopted = true
+        dismissSpacePicker()
         let handOff: @MainActor () -> Void = { [weak self, weak browser] in
             guard let self, let browser else { return }
             let offer = self.passwordOffers.takePending()
@@ -136,6 +245,9 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
     }
 
     func windowWillClose(_ notification: Notification) {
+        rememberFrame()
+        if let pickerMonitor { NSEvent.removeMonitor(pickerMonitor) }
+        pickerMonitor = nil
         if !adopted {
             tab.observer = nil
             tab.close()
@@ -144,6 +256,13 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
     }
 
     // MARK: Menu commands
+
+    @objc func openFile(_ sender: Any?) { openInBrowser(space: nil) }
+    @objc func moveToSpace(_ sender: Any?) { showSpacePicker() }
+    @objc func newLittleWindow(_ sender: Any?) {
+        guard let browser else { return }
+        LittleLauncher.toggle(browser: browser)
+    }
 
     @objc func closeTab(_ sender: Any?) { window?.performClose(sender) }
     @objc func goBack(_ sender: Any?) { tab.tab?.goBack() }
@@ -210,25 +329,37 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
 @MainActor
 final class LittleRootView: NSView {
     let card = ContentCardView()
-    let titleLabel = NSTextField.sidebarLabel("", font: .inter(13, weight: .semibold))
-    let hostLabel = NSTextField.sidebarLabel("", font: .inter(12), color: Palette.faint)
-    let copyButton = IconButton(symbol: "link", size: 14, toolTip: "Copy Link")
-    let menuButton = IconButton(symbol: "ellipsis", size: 14, toolTip: "More")
+    let backButton = IconButton(symbol: "chevron.left", size: 13, weight: .medium, toolTip: "Back")
+    let address = LittleAddressView()
+    let profileLabel = NSTextField.sidebarLabel("", font: .inter(11, weight: .semibold), color: Palette.subtle)
+    let hostLabel = NSTextField.sidebarLabel("", font: .inter(12, weight: .medium), color: Palette.pillText)
+    let copyButton = IconButton(symbol: "link", size: 12, toolTip: "Copy Link")
     let openButton = LittleOpenButton()
-    var actionMenu: ActionMenu?
-    var favicon: NSImage? { didSet { iconView.image = favicon ?? .symbol("globe", size: 13) } }
-    private let iconView = NSImageView()
+    let spacesButton = LittleChevronButton()
+    private let profilePill = NSView()
+    private let profileIcon = NSImageView()
     private var frameColor: NSColor = Palette.ink
     private var toast: ToastView?
+    private weak var picker: LittleSpacePicker?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        iconView.imageScaling = .scaleProportionallyDown
-        iconView.contentTintColor = Palette.icon
-        titleLabel.lineBreakMode = .byTruncatingTail
-        hostLabel.lineBreakMode = .byTruncatingTail
-        for view in [card, iconView, titleLabel, hostLabel, copyButton, menuButton, openButton] as [NSView] { addSubview(view) }
+        card.isFullBleed = true
+        hostLabel.alignment = .center
+        hostLabel.lineBreakMode = .byTruncatingMiddle
+        profileLabel.lineBreakMode = .byTruncatingTail
+        profilePill.wantsLayer = true
+        profilePill.layer?.cornerRadius = 6
+        profilePill.layer?.cornerCurve = .continuous
+        profileIcon.image = .symbol("face.smiling", size: 11, weight: .medium)
+        profileIcon.contentTintColor = Palette.subtle
+        profileIcon.imageScaling = .scaleNone
+        profilePill.addSubview(profileIcon)
+        profilePill.addSubview(profileLabel)
+        backButton.isHidden = true
+        for view in [profilePill, hostLabel, copyButton] as [NSView] { address.addSubview(view) }
+        for view in [card, backButton, address, openButton, spacesButton] as [NSView] { addSubview(view) }
     }
 
     @available(*, unavailable)
@@ -240,29 +371,62 @@ final class LittleRootView: NSView {
         frameColor = color
         layer?.backgroundColor = color.cgColor
         toast?.fillColor = toastFill
+        updateColors()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColors()
+    }
+
+    private func updateColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            profilePill.layer?.backgroundColor = Palette.tabHover.cgColor
+        }
     }
 
     private var toastFill: NSColor { Palette.opaque(Palette.surface, on: frameColor, appearance: effectiveAppearance) }
 
     override func layout() {
         super.layout()
-        let inset = Metrics.cardInset
         let header = Metrics.titlebarHeight
         let w = bounds.width
+        let inset: CGFloat = 8
         let lightsMaxX = (window as? BrowserWindow)?.trafficLightsMaxX ?? 67
         let center = header / 2
+        let height: CGFloat = 30
+        let top = center - height / 2
+
+        spacesButton.frame = NSRect(x: w - inset - 26, y: top, width: 26, height: height)
         let openWidth = openButton.fittingWidth
-        openButton.frame = NSRect(x: w - inset - openWidth, y: center - 14, width: openWidth, height: 28)
-        menuButton.frame = NSRect(x: openButton.frame.minX - 32, y: center - 14, width: 28, height: 28)
-        copyButton.frame = NSRect(x: menuButton.frame.minX - 30, y: center - 14, width: 28, height: 28)
-        iconView.frame = NSRect(x: lightsMaxX + 16, y: center - 8, width: 16, height: 16)
-        let textX = iconView.frame.maxX + 8
-        let available = max(0, copyButton.frame.minX - 12 - textX)
-        let titleWidth = min(ceil(titleLabel.attributedStringValue.size().width) + 4, available * 0.65)
-        titleLabel.frame = NSRect(x: textX, y: center - 9, width: titleWidth, height: 18)
-        hostLabel.frame = NSRect(x: titleLabel.frame.maxX + 8, y: center - 8, width: max(0, available - titleWidth - 8), height: 16)
-        card.frame = NSRect(x: inset, y: header, width: w - 2 * inset, height: bounds.height - header - inset)
+        openButton.frame = NSRect(x: spacesButton.frame.minX - 4 - openWidth, y: top, width: openWidth, height: height)
+
+        var x = lightsMaxX + 14
+        if !backButton.isHidden {
+            backButton.frame = NSRect(x: x, y: top, width: 28, height: height)
+            x = backButton.frame.maxX + 4
+        }
+        address.frame = NSRect(x: x, y: top, width: max(0, openButton.frame.minX - 6 - x), height: height)
+
+        let aw = address.bounds.width
+        let profileWidth = min(ceil(profileLabel.intrinsicContentSize.width) + 32, aw * 0.3)
+        profilePill.frame = NSRect(x: 5, y: 5, width: profileWidth, height: height - 10)
+        profileIcon.frame = NSRect(x: 6, y: (profilePill.bounds.height - 14) / 2, width: 14, height: 14)
+        profileLabel.frame = NSRect(x: 22, y: (profilePill.bounds.height - 15) / 2, width: profileWidth - 27, height: 15)
+        copyButton.frame = NSRect(x: aw - 4 - 24, y: (height - 24) / 2, width: 24, height: 24)
+        let side = max(profilePill.frame.maxX, aw - copyButton.frame.minX) + 8
+        hostLabel.frame = NSRect(x: side, y: (height - 16) / 2, width: max(0, aw - 2 * side), height: 16)
+
+        card.frame = NSRect(x: 0, y: header, width: w, height: max(0, bounds.height - header))
+        if let picker { picker.place(below: spacesButton.frame, in: bounds) }
         if let toast { toast.setFrameOrigin(toastOrigin(for: toast)) }
+    }
+
+    func showPicker(_ picker: LittleSpacePicker) {
+        self.picker = picker
+        addSubview(picker)
+        picker.place(below: spacesButton.frame, in: bounds)
+        picker.present()
     }
 
     func showToast(_ newToast: ToastView) {
@@ -290,53 +454,319 @@ final class LittleRootView: NSView {
 }
 
 @MainActor
-final class LittleOpenButton: HoverView {
-    var action: (() -> Void)?
-    var title = "" {
-        didSet {
-            label.stringValue = title
-            superview?.needsLayout = true
-        }
-    }
-    var accent = Palette.accent { didSet { needsDisplay = true } }
-    private let label = NSTextField.sidebarLabel("", font: .inter(12, weight: .semibold), color: .white)
-    private let icon = NSImageView()
-    private let fill = AccentFill()
-
+final class LittleAddressView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
+        wantsLayer = true
         layer?.cornerRadius = 8
         layer?.cornerCurve = .continuous
-        icon.image = .symbol("arrow.up.left.and.arrow.down.right", size: 11, weight: .semibold)
-        icon.contentTintColor = .white
-        icon.imageScaling = .scaleNone
-        label.alignment = .left
-        fill.install(in: self)
-        addSubview(icon)
-        addSubview(label)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    var fittingWidth: CGFloat { ceil(label.attributedStringValue.size().width) + 44 }
+    override var isFlipped: Bool { true }
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() { layer?.backgroundColor = Palette.surface.cgColor }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            window?.performZoom(nil)
+        } else {
+            window?.performDrag(with: event)
+        }
+    }
+}
+
+@MainActor
+final class LittleOpenButton: HoverView {
+    var action: (() -> Void)?
+    var spaceName = "" { didSet { updateText() } }
+    var accent = Palette.accent { didSet { updateText() } }
+    private let label = NSTextField.sidebarLabel("")
+    private let keycap = NSTextField.sidebarLabel("\u{2318}O", font: .inter(10, weight: .semibold), color: Palette.subtle)
+    private let keycapBox = NSView()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        layer?.cornerRadius = 8
+        layer?.cornerCurve = .continuous
+        keycapBox.wantsLayer = true
+        keycapBox.layer?.cornerRadius = 4
+        keycapBox.layer?.cornerCurve = .continuous
+        keycap.alignment = .center
+        keycapBox.addSubview(keycap)
+        addSubview(label)
+        addSubview(keycapBox)
+        toolTip = "Move this page into the Space"
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func updateText() {
+        let text = NSMutableAttributedString(string: "Open in ", attributes: [.font: NSFont.inter(12, weight: .medium), .foregroundColor: Palette.subtle])
+        text.append(NSAttributedString(string: spaceName, attributes: [.font: NSFont.inter(12, weight: .semibold), .foregroundColor: accent]))
+        label.attributedStringValue = text
+        superview?.needsLayout = true
+    }
+
+    var fittingWidth: CGFloat { ceil(min(label.attributedStringValue.size().width, 200)) + 12 + 8 + 28 + 6 }
 
     override func layout() {
         super.layout()
-        icon.frame = NSRect(x: 10, y: (bounds.height - 16) / 2, width: 16, height: 16)
-        label.frame = NSRect(x: 30, y: (bounds.height - 16) / 2, width: bounds.width - 38, height: 16)
+        let labelWidth = bounds.width - 12 - 8 - 28 - 6
+        label.frame = NSRect(x: 12, y: (bounds.height - 16) / 2, width: max(0, labelWidth), height: 16)
+        keycapBox.frame = NSRect(x: bounds.width - 6 - 28, y: (bounds.height - 18) / 2, width: 28, height: 18)
+        keycap.frame = NSRect(x: 0, y: 2, width: 28, height: 14)
         needsDisplay = true
     }
 
     override func updateLayer() {
-        fill.update(in: self, accent: accent, hovered: isHovered)
+        layer?.backgroundColor = (isHovered ? Palette.tabActive : Palette.surface).cgColor
+        keycapBox.layer?.backgroundColor = Palette.tabHover.cgColor
     }
 
-    override func mouseDown(with event: NSEvent) { Motion.press(self, scale: 0.95) }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateText()
+    }
+
+    override func mouseDown(with event: NSEvent) { Motion.press(self, scale: 0.96) }
 
     override func mouseUp(with event: NSEvent) {
         Motion.release(self)
         guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         action?()
+    }
+}
+
+@MainActor
+final class LittleChevronButton: HoverView {
+    var action: (() -> Void)?
+    var isActive = false { didSet { needsDisplay = true } }
+    private let icon = NSImageView()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        layer?.cornerRadius = 8
+        layer?.cornerCurve = .continuous
+        icon.image = .symbol("chevron.down", size: 10, weight: .semibold)
+        icon.contentTintColor = Palette.subtle
+        icon.imageScaling = .scaleNone
+        addSubview(icon)
+        toolTip = "Open in Another Space (\u{2325}\u{2318}O)"
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        icon.frame = bounds
+    }
+
+    override func updateLayer() {
+        layer?.backgroundColor = (isHovered || isActive ? Palette.tabActive : Palette.surface).cgColor
+    }
+
+    override func mouseDown(with event: NSEvent) { Motion.press(self, scale: 0.94) }
+
+    override func mouseUp(with event: NSEvent) {
+        Motion.release(self)
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        action?()
+    }
+}
+
+@MainActor
+final class LittleSpacePicker: NSView, NSTextFieldDelegate {
+    var onChoose: ((Space) -> Void)?
+    var onCancel: (() -> Void)?
+    private let spaces: [Space]
+    private let frost = FrostView()
+    private let glyph = NSImageView()
+    private let field = NSTextField()
+    private let divider = HairlineView(inset: 0, color: Palette.white(0x1F))
+    private var rows: [LittleSpaceRow] = []
+    private var shown: [Space] = []
+    private var selected = 0
+    private static let width: CGFloat = 248
+    private static let rowHeight: CGFloat = 34
+    private static let fieldHeight: CGFloat = 40
+
+    init(spaces: [Space], frameColor: NSColor) {
+        self.spaces = spaces
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.18
+        layer?.shadowRadius = 14
+        layer?.shadowOffset = CGSize(width: 0, height: -6)
+        frost.cornerRadius = 10
+        frost.tint = Palette.commandBar(frame: frameColor)
+        frost.washOpacity = 0.86
+        frost.autoresizingMask = [.width, .height]
+        addSubview(frost)
+        glyph.image = .symbol("magnifyingglass", size: 12, weight: .medium)
+        glyph.contentTintColor = Palette.subtle
+        glyph.imageScaling = .scaleNone
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .inter(13)
+        field.textColor = Palette.text
+        field.placeholderAttributedString = NSAttributedString(
+            string: "Search Spaces\u{2026}", attributes: [.font: NSFont.inter(13), .foregroundColor: Palette.faint])
+        field.delegate = self
+        field.cell?.isScrollable = true
+        field.cell?.wraps = false
+        for view in [glyph, field, divider] as [NSView] { addSubview(view) }
+        rebuild()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    private var contentHeight: CGFloat {
+        Self.fieldHeight + 1 + 6 + CGFloat(max(rows.count, 1)) * Self.rowHeight + 6
+    }
+
+    func place(below anchor: NSRect, in container: NSRect) {
+        let height = min(contentHeight, container.height - anchor.maxY - 16)
+        frame = NSRect(x: anchor.maxX - Self.width, y: anchor.maxY + 6, width: Self.width, height: height)
+    }
+
+    func present() {
+        window?.makeFirstResponder(field)
+        guard !Motion.reduced else { return }
+        alphaValue = 0
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            animator().alphaValue = 1
+        }
+    }
+
+    func dismiss() {
+        guard !Motion.reduced else {
+            removeFromSuperview()
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.1
+            animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated { self?.removeFromSuperview() }
+        })
+    }
+
+    override func layout() {
+        super.layout()
+        frost.frame = bounds
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: 10, cornerHeight: 10, transform: nil)
+        glyph.frame = NSRect(x: 12, y: (Self.fieldHeight - 16) / 2, width: 16, height: 16)
+        field.frame = NSRect(x: 34, y: (Self.fieldHeight - 18) / 2, width: bounds.width - 46, height: 18)
+        divider.frame = NSRect(x: 0, y: Self.fieldHeight, width: bounds.width, height: 1)
+        var y = Self.fieldHeight + 1 + 6
+        for row in rows {
+            row.frame = NSRect(x: 6, y: y, width: bounds.width - 12, height: Self.rowHeight)
+            y += Self.rowHeight
+        }
+    }
+
+    private func rebuild() {
+        let query = field.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
+        shown = query.isEmpty ? spaces : spaces.filter { $0.name.lowercased().contains(query) }
+        rows.forEach { $0.removeFromSuperview() }
+        rows = shown.enumerated().map { index, space in
+            let row = LittleSpaceRow(space: space)
+            row.onHover = { [weak self] in self?.select(index) }
+            row.onClick = { [weak self] in self?.choose(index) }
+            addSubview(row)
+            return row
+        }
+        selected = 0
+        updateSelection()
+        if let superview { place(below: NSRect(x: frame.maxX - Self.width, y: frame.minY - 6, width: Self.width, height: 0), in: superview.bounds) }
+        needsLayout = true
+    }
+
+    private func select(_ index: Int) {
+        selected = index
+        updateSelection()
+    }
+
+    private func updateSelection() {
+        for (index, row) in rows.enumerated() { row.isSelected = index == selected }
+    }
+
+    private func choose(_ index: Int) {
+        guard shown.indices.contains(index) else { return }
+        onChoose?(shown[index])
+    }
+
+    func controlTextDidChange(_ notification: Notification) { rebuild() }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.moveDown(_:)):
+            if !rows.isEmpty { select(min(selected + 1, rows.count - 1)) }
+        case #selector(NSResponder.moveUp(_:)):
+            select(max(selected - 1, 0))
+        case #selector(NSResponder.insertNewline(_:)):
+            choose(selected)
+        case #selector(NSResponder.cancelOperation(_:)):
+            onCancel?()
+        default:
+            return false
+        }
+        return true
+    }
+}
+
+@MainActor
+final class LittleSpaceRow: HoverView {
+    var onHover: (() -> Void)?
+    var onClick: (() -> Void)?
+    var isSelected = false { didSet { if isSelected != oldValue { needsDisplay = true } } }
+    private let badge = NSImageView()
+    private let name = NSTextField.sidebarLabel("", font: .inter(13, weight: .medium))
+
+    init(space: Space) {
+        super.init(frame: .zero)
+        layer?.cornerRadius = 7
+        layer?.cornerCurve = .continuous
+        badge.image = SettingsStyle.badge(for: space, size: 22)
+        badge.imageScaling = .scaleProportionallyDown
+        name.stringValue = space.name
+        name.lineBreakMode = .byTruncatingTail
+        addSubview(badge)
+        addSubview(name)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        badge.frame = NSRect(x: 6, y: (bounds.height - 22) / 2, width: 22, height: 22)
+        name.frame = NSRect(x: 38, y: (bounds.height - 17) / 2, width: bounds.width - 46, height: 17)
+    }
+
+    override func updateLayer() {
+        layer?.backgroundColor = isSelected ? Palette.tabHover.cgColor : NSColor.clear.cgColor
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        onHover?()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        onClick?()
     }
 }

@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, ApplicationDelegate {
             space.tabs = saved.tabs.map { saved in
                 let tab = BrowserTab(url: URL(string: saved.url), title: saved.title)
                 tab.cachedFavicon = .favicon(fromData: saved.favicon)
+                if let viewed = saved.viewed { tab.lastViewed = Date(timeIntervalSince1970: min(viewed, Date().timeIntervalSince1970)) }
                 return tab
             }
             let ordered = space.pinnedTabs + space.tabs
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, ApplicationDelegate {
             let loaded = spaces.filter { $0.profile != nil }
             guard let self, !loaded.isEmpty else { return }
             NSApp.mainMenu = MainMenu.build()
+            LittleArgon.updateHotKey()
             let controller = BrowserWindowController(spaces: loaded, activeIndex: state.activeSpace)
             self.controller = controller
             application.extensionTabsDelegate = controller

@@ -8,6 +8,18 @@ enum Preferences {
     private static let autoPictureInPictureKey = "ArgonAutoPictureInPicture"
     private static let checkForUpdatesKey = "ArgonCheckForUpdates"
     private static let sidebarOnRightKey = "ArgonSidebarOnRight"
+    private static let archiveAfterKey = "ArgonArchiveAfterHours"
+
+    static let archiveChoices: [(hours: Int, title: String)] = [(12, "12 Hours"), (24, "24 Hours"), (168, "7 Days"), (720, "30 Days"), (0, "Never")]
+
+    static var archiveAfterHours: Int {
+        get { UserDefaults.standard.object(forKey: archiveAfterKey) as? Int ?? 12 }
+        set { UserDefaults.standard.set(newValue, forKey: archiveAfterKey) }
+    }
+
+    static var archiveAfter: TimeInterval? {
+        archiveAfterHours > 0 ? TimeInterval(archiveAfterHours) * 60 * 60 : nil
+    }
 
     static var sidebarOnRight: Bool {
         get { UserDefaults.standard.bool(forKey: sidebarOnRightKey) }

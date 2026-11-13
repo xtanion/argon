@@ -12,7 +12,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         case match(AutocompleteMatch, engine: String)
     }
 
-    weak var controller: BrowserWindowController?
+    weak var controller: (any CommandBarHost)?
     let mode: Mode
     var frameColor: NSColor { didSet { updatePanelColor() } }
 
@@ -81,6 +81,11 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 
+    var blursBehindWindow: Bool {
+        get { frost.blursBehindWindow }
+        set { frost.blursBehindWindow = newValue }
+    }
+
     private func updatePanelColor() {
         frost.tint = Palette.commandBar(frame: frameColor)
     }
@@ -88,12 +93,6 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     func activate() {
         window?.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
-        guard !Motion.reduced else { return }
-        panel.alphaValue = 0
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
-            panel.animator().alphaValue = 1
-        }
     }
 
     override func layout() {
@@ -124,7 +123,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
 
     // MARK: Suggestions
 
-    private var profile: Profile? { controller?.activeSpace.profile }
+    private var profile: Profile? { controller?.commandBarProfile }
 
     private var autocomplete: Autocomplete? {
         if let autocompleteStorage { return autocompleteStorage }
@@ -205,6 +204,21 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
                     } else {
                         result.append(.match(match, engine: engine))
                     }
+                }
+            }
+            if controller is BrowserWindowController {
+                var seen = Set(result.compactMap { suggestion -> String? in
+                    switch suggestion {
+                    case .open(let url, _, _, _): return Self.key(url)
+                    case .switchTo(let tab, _): return tab.url.map(Self.key)
+                    case .match(let match, _): return match.destinationURL.map(Self.key)
+                    }
+                })
+                for entry in TabArchive.shared.search(query) {
+                    if result.count >= 8 { break }
+                    guard let url = URL(string: entry.url), seen.insert(Self.key(url)).inserted else { continue }
+                    result.append(.open(url, title: entry.title.isEmpty ? url.displayHost : entry.title,
+                                        subtitle: "Archived \u{00B7} \(entry.spaceName)", symbol: "archivebox"))
                 }
             }
         }
@@ -316,8 +330,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
             if let url = AddressInput.url(from: field.stringValue, profile: profile) {
                 controller.commandBar(self, open: url)
             } else if mode == .newTab {
-                controller.dismissCommandBar()
-                controller.openTab(nil)
+                controller.commandBarOpenBlank()
             }
             return
         }
@@ -370,6 +383,17 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
             rebuildSuggestions()
         }
     }
+}
+
+@MainActor
+protocol CommandBarHost: AnyObject {
+    var commandBarProfile: Profile? { get }
+    var activeTab: BrowserTab? { get }
+    func tabsInRecentOrder() -> [(tab: BrowserTab, space: Space)]
+    func commandBar(_ bar: CommandBarView, open url: URL)
+    func commandBar(_ bar: CommandBarView, switchTo tab: BrowserTab)
+    func commandBarOpenBlank()
+    func dismissCommandBar()
 }
 
 @MainActor

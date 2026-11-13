@@ -648,6 +648,7 @@ final class FrostView: NSView {
 
     var tint: NSColor = .clear { didSet { if tint != oldValue { applyTint() } } }
     var washOpacity: CGFloat = 0.72 { didSet { if washOpacity != oldValue { applyTint() } } }
+    var blursBehindWindow = false { didSet { blur.blendingMode = blursBehindWindow ? .behindWindow : .withinWindow } }
 
     private static func mask(radius: CGFloat) -> NSImage {
         let edge = 2 * radius + 1

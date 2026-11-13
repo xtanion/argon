@@ -4,6 +4,7 @@ struct AvailableUpdate: Sendable {
     let version: SemanticVersion
     let pageURL: URL
     let downloadURL: URL?
+    let archiveURL: URL?
 }
 
 struct UpdateCheckJob: BackgroundJob {
@@ -43,16 +44,17 @@ struct UpdateCheckJob: BackgroundJob {
         }
         guard let (version, release) = candidates.max(by: { $0.0 < $1.0 }),
               currentVersion.map({ version > $0 }) ?? true else { return nil }
-        return AvailableUpdate(version: version, pageURL: release.htmlUrl, downloadURL: Self.diskImage(in: release.assets))
+        return AvailableUpdate(version: version, pageURL: release.htmlUrl,
+                               downloadURL: Self.asset("dmg", in: release.assets), archiveURL: Self.asset("zip", in: release.assets))
     }
 
-    private static func diskImage(in assets: [Asset]) -> URL? {
+    private static func asset(_ suffix: String, in assets: [Asset]) -> URL? {
         #if arch(arm64)
         let architecture = "arm64"
         #else
         let architecture = "x86_64"
         #endif
-        return assets.first { $0.name.hasSuffix("-\(architecture).dmg") }?.browserDownloadUrl
+        return assets.first { $0.name.hasSuffix("-\(architecture).\(suffix)") }?.browserDownloadUrl
     }
 
     @MainActor func deliver(_ update: AvailableUpdate?, context: JobContext) {
@@ -68,8 +70,6 @@ struct UpdateCheckJob: BackgroundJob {
 @MainActor
 enum UpdatePrompt {
     private static let skippedVersionKey = "ArgonUpdateSkippedVersion"
-    private static let remindAfterKey = "ArgonUpdateRemindAfter"
-    private static let remindInterval: TimeInterval = 24 * 60 * 60
 
     static func checkNow() {
         BrowserWindowController.current?.showToast(ToastView(message: "Checking for Updates\u{2026}", icon: "arrow.triangle.2.circlepath", duration: 10))
@@ -77,33 +77,27 @@ enum UpdatePrompt {
     }
 
     static func present(_ update: AvailableUpdate?, manual: Bool) {
-        guard let controller = BrowserWindowController.current, controller.window?.isVisible == true else { return }
+        if let update, UserDefaults.standard.string(forKey: skippedVersionKey) != update.version.description || manual {
+            Updater.shared.offer(update)
+        }
+        guard manual, let controller = BrowserWindowController.current, controller.window?.isVisible == true else { return }
         guard let update else {
-            if manual {
-                let version = UpdateCheckJob().currentVersion.map { " \($0)" } ?? ""
-                controller.showToast(ToastView(message: "You're up to date", icon: "checkmark.circle", duration: 3)
-                    .withToolTip("Argon\(version) is the newest version."))
-            }
+            let version = UpdateCheckJob().currentVersion.map { " \($0)" } ?? ""
+            controller.showToast(ToastView(message: "You're up to date", icon: "checkmark.circle", duration: 3)
+                .withToolTip("Argon\(version) is the newest version."))
             return
         }
-        if !manual {
-            if UserDefaults.standard.string(forKey: skippedVersionKey) == update.version.description { return }
-            if let remind = UserDefaults.standard.object(forKey: remindAfterKey) as? Date, remind > Date() { return }
-        }
         let actions = [
-            ToastAction(title: "Skip This Version") { _ in
-                UserDefaults.standard.set(update.version.description, forKey: skippedVersionKey)
-            },
-            ToastAction(title: "Later") { _ in
-                UserDefaults.standard.set(Date().addingTimeInterval(remindInterval), forKey: remindAfterKey)
-            },
-            ToastAction(title: "Download", isPrimary: true) { _ in
-                UserDefaults.standard.removeObject(forKey: remindAfterKey)
-                BrowserWindowController.current?.openTab(update.downloadURL ?? update.pageURL)
-            },
+            ToastAction(title: "Later") { _ in },
+            ToastAction(title: "Update", isPrimary: true) { _ in Updater.shared.apply() },
         ]
         controller.showToast(ToastView(message: "Argon \(update.version) is available", icon: "arrow.down.circle",
-                                       actions: actions, duration: .infinity))
+                                       actions: actions, duration: 8))
+    }
+
+    static func skip(_ update: AvailableUpdate) {
+        UserDefaults.standard.set(update.version.description, forKey: skippedVersionKey)
+        Updater.shared.dismiss()
     }
 
     static func showFailure(_ error: Error) {

@@ -22,7 +22,11 @@ enum MainMenu {
             menu.addItem(withTitle: "New Tab", action: #selector(BrowserWindowController.newTab(_:)), keyEquivalent: "t")
             menu.addItem(withTitle: "New Space", action: #selector(BrowserWindowController.newSpace(_:)), keyEquivalent: "n")
                 .keyEquivalentModifierMask = [.command, .shift]
+            menu.addItem(withTitle: "New Little Argon Window", action: #selector(BrowserWindowController.newLittleWindow(_:)), keyEquivalent: "n")
+                .keyEquivalentModifierMask = [.command, .option]
             menu.addItem(withTitle: "Open File...", action: #selector(BrowserWindowController.openFile(_:)), keyEquivalent: "o")
+            menu.addItem(withTitle: "Open in Another Space...", action: #selector(LittleWindowController.moveToSpace(_:)), keyEquivalent: "o")
+                .keyEquivalentModifierMask = [.command, .option]
             menu.addItem(withTitle: "Open Location...", action: #selector(BrowserWindowController.openLocation(_:)), keyEquivalent: "l")
             menu.addItem(.separator())
             menu.addItem(withTitle: "Close Tab", action: #selector(BrowserWindowController.closeTab(_:)), keyEquivalent: "w")
@@ -98,6 +102,7 @@ enum MainMenu {
             menu.addItem(withTitle: "Forward", action: #selector(BrowserWindowController.goForward(_:)), keyEquivalent: "]")
             menu.addItem(.separator())
             menu.addItem(withTitle: "Show All History", action: #selector(BrowserWindowController.showHistory(_:)), keyEquivalent: "y")
+            menu.addSubmenu("Archived Tabs") { archive in archive.delegate = ArchiveMenu.shared }
         }
 
         main.addSubmenu("Spaces") { menu in

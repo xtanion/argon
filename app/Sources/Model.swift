@@ -21,6 +21,7 @@ final class BrowserTab: NSObject, TabDelegate {
     private var savedTitle: String
     weak var observer: BrowserTabObserver?
     var lastActive = Date.distantPast
+    var lastViewed = Date()
     var autoEnteredPictureInPicture = false
     private(set) var pinnedURL: URL?
     private(set) var pinnedTitle = ""
@@ -363,6 +364,7 @@ struct SavedState: Codable, Sendable {
         var url: String
         var title: String
         var favicon: String?
+        var viewed: Double? = nil
     }
 
     struct SavedItem: Codable, Sendable {

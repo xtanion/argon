@@ -19,6 +19,7 @@ final class SidebarView: NSView {
     private let tabList = TabListView()
     private let spaceBar = SpaceBarView()
     private let nowPlaying = NowPlayingView()
+    private let updateChip = UpdateChipView()
     private let spaceClip = FlippedView()
     private let spaceContent = FlippedView()
     private let favoritesGrid = FavoritesGridView()
@@ -88,6 +89,7 @@ final class SidebarView: NSView {
         spaceBar.sidebar = self
         nowPlaying.sidebar = self
         nowPlaying.isHidden = true
+        updateChip.onLayoutChange = { [weak self] in self?.needsLayout = true }
         favoritesGrid.sidebar = self
         favoritesGrid.list = tabList
         spaceHeader.onToggle = { [weak self] in self?.controller?.togglePinnedSection() }
@@ -101,7 +103,7 @@ final class SidebarView: NSView {
         for view in [favoritesGrid, spaceHeader, tabScroll] as [NSView] {
             spaceContent.addSubview(view)
         }
-        for view in [toggleButton, backButton, forwardButton, reloadButton, pill, spaceClip, listBottomEdge, spaceBar, nowPlaying] as [NSView] {
+        for view in [toggleButton, backButton, forwardButton, reloadButton, pill, spaceClip, listBottomEdge, spaceBar, nowPlaying, updateChip] as [NSView] {
             addSubview(view)
         }
     }
@@ -145,8 +147,11 @@ final class SidebarView: NSView {
         pill.frame = NSRect(x: p, y: Metrics.titlebarHeight, width: w - 2 * p, height: Metrics.rowHeight)
         spaceBar.frame = NSRect(x: 0, y: bounds.height - Metrics.spaceBarHeight, width: w, height: Metrics.spaceBarHeight)
         let clipTop = pill.frame.maxY
-        nowPlaying.frame = NSRect(x: p, y: spaceBar.frame.minY - NowPlayingView.expandedHeight, width: w - 2 * p, height: NowPlayingView.expandedHeight)
-        let clipBottom = nowPlaying.tab == nil ? spaceBar.frame.minY : spaceBar.frame.minY - NowPlayingView.collapsedHeight - 6
+        let chipHeight = updateChip.isHidden ? 0 : UpdateChipView.height
+        updateChip.frame = NSRect(x: p, y: spaceBar.frame.minY - chipHeight, width: w - 2 * p, height: chipHeight)
+        let aboveChip = updateChip.isHidden ? spaceBar.frame.minY : updateChip.frame.minY - 6
+        nowPlaying.frame = NSRect(x: p, y: aboveChip - NowPlayingView.expandedHeight, width: w - 2 * p, height: NowPlayingView.expandedHeight)
+        let clipBottom = nowPlaying.tab == nil ? aboveChip : aboveChip - NowPlayingView.collapsedHeight - 6
         spaceClip.frame = NSRect(x: 0, y: clipTop, width: w, height: max(0, clipBottom - clipTop))
         if swipe == nil, !swipeSettling { spaceContent.frame = spaceClip.bounds }
         outgoingSnapshot?.frame.size = spaceClip.bounds.size
@@ -510,6 +515,10 @@ final class SidebarView: NSView {
         }
         swipe = current
         applySwipe(current)
+        if current.target != nil, abs(current.offset) >= pageWidth * 0.25 {
+            swipeAxisLocked = false
+            settleSwipe(current, commit: true)
+        }
     }
 
     private func applySwipe(_ swipe: SpaceSwipe) {
@@ -532,7 +541,12 @@ final class SidebarView: NSView {
         guard let current = swipe else { return }
         let width = pageWidth
         let flicked = abs(current.velocity) > 18 && (current.velocity < 0) == (current.offset < 0)
-        let commit = !cancelled && current.target != nil && (abs(current.offset) > width * 0.35 || flicked)
+        let commit = !cancelled && current.target != nil && (abs(current.offset) > width * 0.25 || flicked)
+        settleSwipe(current, commit: commit)
+    }
+
+    private func settleSwipe(_ current: SpaceSwipe, commit: Bool) {
+        let width = pageWidth
         let snapshotX: CGFloat = commit ? -CGFloat(current.direction) * width : 0
         let contentX: CGFloat = commit ? 0 : CGFloat(current.direction) * width
         swipe = nil
@@ -622,7 +636,7 @@ final class TabListView: NSView {
             if let newTabRow { addSubview(newTabRow) }
         }
     }
-    private let divider = HairlineView(inset: 0)
+    private let divider = HairlineView(inset: 0, color: Palette.divider)
     private let clearButton = TextButton(title: "Clear")
     var revealsClear = false {
         didSet {

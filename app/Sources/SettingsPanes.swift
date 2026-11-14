@@ -9,9 +9,14 @@ final class GeneralSettingsPane: SettingsPane {
     private let chip = DefaultBrowserChip()
     private let folderPopUp = SettingsPopUp { _ in }
     private let sidebarSidePopUp = SettingsPopUp { item in Preferences.sidebarOnRight = item.tag == 1 }
+    private let framelessSwitch = SettingsSwitch(isOn: Preferences.frameless) { Preferences.frameless = $0 }
     private let archivePopUp = SettingsPopUp { item in
         Preferences.archiveAfterHours = item.tag
         BrowserWindowController.current?.archiveIdleTabs()
+    }
+
+    @objc private func syncFrameless() {
+        framelessSwitch.state = Preferences.frameless ? .on : .off
     }
 
     @objc private func syncSidebarSide() {
@@ -34,6 +39,9 @@ final class GeneralSettingsPane: SettingsPane {
             SettingsRow(title: "Sidebar position", subtitle: "Show the sidebar on the left or right side of the window.",
                         badge: SettingsStyle.badge("sidebar.right", color: .systemIndigo),
                         accessory: sidebarSidePopUp),
+            SettingsRow(title: "Frameless window", subtitle: "The page runs to the window's edges, with no border on the three sides away from the sidebar.",
+                        badge: SettingsStyle.badge("rectangle.leadinghalf.inset.filled", color: .systemTeal),
+                        accessory: framelessSwitch),
         ])
         for (tag, title) in ["Left", "Right"].enumerated() {
             sidebarSidePopUp.addItem(withTitle: title)
@@ -41,6 +49,8 @@ final class GeneralSettingsPane: SettingsPane {
         }
         syncSidebarSide()
         NotificationCenter.default.addObserver(self, selector: #selector(syncSidebarSide), name: .sidebarSideDidChange, object: nil)
+        framelessSwitch.state = Preferences.frameless ? .on : .off
+        NotificationCenter.default.addObserver(self, selector: #selector(syncFrameless), name: .framelessDidChange, object: nil)
 
         let archive = SettingsCard([
             SettingsRow(title: "Archive tabs after", subtitle: "Unpinned tabs you haven't looked at in this long are archived. Find them under History \u{2192} Archived Tabs or search for them in the command bar.",

@@ -6,10 +6,10 @@ import UniformTypeIdentifiers
 final class SidebarView: NSView {
     weak var controller: BrowserWindowController?
 
-    private let toggleButton = IconButton(symbol: "sidebar.left", size: 17, toolTip: "Hide Sidebar")
-    private let backButton = IconButton(symbol: "arrow.left", size: 17, toolTip: "Back")
-    private let forwardButton = IconButton(symbol: "arrow.right", size: 17, toolTip: "Forward")
-    private let reloadButton = IconButton(symbol: "arrow.clockwise", size: 17, toolTip: "Reload")
+    private let toggleButton = IconButton(symbol: "sidebar.left", size: 15, toolTip: "Hide Sidebar")
+    private let backButton = IconButton(symbol: "arrow.left", size: 15, toolTip: "Back")
+    private let forwardButton = IconButton(symbol: "arrow.right", size: 15, toolTip: "Forward")
+    private let reloadButton = IconButton(symbol: "arrow.clockwise", size: 15, toolTip: "Reload")
     private let pill = URLPillView()
     private let spaceHeader = SpaceHeaderView()
     private var activeSpaceIndex = 0
@@ -201,7 +201,7 @@ final class SidebarView: NSView {
         backButton.isEnabled = tab?.tab?.canGoBack ?? false
         forwardButton.isEnabled = tab?.tab?.canGoForward ?? false
         reloadButton.isEnabled = tab != nil
-        reloadButton.setSymbol(tab?.isLoading == true ? "xmark" : "arrow.clockwise", size: 17)
+        reloadButton.setSymbol(tab?.isLoading == true ? "xmark" : "arrow.clockwise", size: 15)
     }
 
     func refresh(_ tab: BrowserTab) {
@@ -423,7 +423,7 @@ final class SidebarView: NSView {
     override func rightMouseDown(with event: NSEvent) { showSidebarMenu(for: event, in: self) }
 
     var isOnRight = false {
-        didSet { toggleButton.setSymbol(isOnRight ? "sidebar.right" : "sidebar.left", size: 17) }
+        didSet { toggleButton.setSymbol(isOnRight ? "sidebar.right" : "sidebar.left", size: 15) }
     }
 
     private var sidebarMenu: ActionMenu?
@@ -1652,7 +1652,7 @@ final class URLPillView: HoverView {
 
     private let label = NSTextField.sidebarLabel(font: .systemFont(ofSize: 13), color: Palette.pillText)
     private let searchIcon = NSImageView()
-    private let copyButton = IconButton(symbol: "link", size: 15, toolTip: "Copy Link")
+    private let copyButton = IconButton(symbol: "link", size: 13, toolTip: "Copy Link")
     let controlsButton = IconButton(symbol: "switch.2", size: 15, toolTip: "Site Controls")
     var controlsOpen = false { didSet { if controlsOpen != oldValue { updateCopyVisibility() } } }
 

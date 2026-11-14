@@ -38,6 +38,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         applyFrame(animated: false)
         NotificationCenter.default.addObserver(self, selector: #selector(downloadsChanged(_:)), name: .downloadsDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(sidebarSideChanged(_:)), name: .sidebarSideDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(framelessChanged(_:)), name: .framelessDidChange, object: nil)
+        root.frameless = Preferences.frameless
         archiveTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { _ in
             MainActor.assumeIsolated { BrowserWindowController.current?.archiveIdleTabs() }
         }
@@ -86,6 +88,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         let target = spaces.firstIndex { $0.id == spaceID }
         if let target, target != activeIndex { selectSpace(target) }
         openTab(url)
+    }
+
+    @objc private func framelessChanged(_ notification: Notification) {
+        root.frameless = Preferences.frameless
     }
 
     @objc private func sidebarSideChanged(_ notification: Notification) {

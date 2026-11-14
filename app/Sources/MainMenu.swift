@@ -71,6 +71,7 @@ enum MainMenu {
             alternate.keyEquivalentModifierMask = [.control]
             alternate.isHidden = true
             alternate.allowsKeyEquivalentWhenHidden = true
+            menu.addItem(FramelessMenuItem())
             menu.addItem(.separator())
             menu.addItem(withTitle: "Reload Page", action: #selector(BrowserWindowController.reloadPage(_:)), keyEquivalent: "r")
             menu.addItem(withTitle: "Hard Reload", action: #selector(BrowserWindowController.hardReload(_:)), keyEquivalent: "r")
@@ -261,4 +262,21 @@ private extension NSMenuItem {
         keyEquivalent = key
         return self
     }
+}
+
+@MainActor
+final class FramelessMenuItem: NSMenuItem {
+    init() {
+        super.init(title: "Frameless Window", action: #selector(toggle), keyEquivalent: "")
+        target = self
+        state = Preferences.frameless ? .on : .off
+        NotificationCenter.default.addObserver(self, selector: #selector(sync), name: .framelessDidChange, object: nil)
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) { fatalError() }
+
+    @objc private func toggle() { Preferences.frameless.toggle() }
+
+    @objc private func sync() { state = Preferences.frameless ? .on : .off }
 }

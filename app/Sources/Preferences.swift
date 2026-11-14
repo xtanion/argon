@@ -9,6 +9,16 @@ enum Preferences {
     private static let checkForUpdatesKey = "ArgonCheckForUpdates"
     private static let sidebarOnRightKey = "ArgonSidebarOnRight"
     private static let archiveAfterKey = "ArgonArchiveAfterHours"
+    private static let framelessKey = "ArgonFrameless"
+
+    static var frameless: Bool {
+        get { UserDefaults.standard.bool(forKey: framelessKey) }
+        set {
+            guard newValue != frameless else { return }
+            UserDefaults.standard.set(newValue, forKey: framelessKey)
+            NotificationCenter.default.post(name: .framelessDidChange, object: nil)
+        }
+    }
 
     static let archiveChoices: [(hours: Int, title: String)] = [(12, "12 Hours"), (24, "24 Hours"), (168, "7 Days"), (720, "30 Days"), (0, "Never")]
 
@@ -79,6 +89,7 @@ enum Preferences {
 
 extension Notification.Name {
     static let sidebarSideDidChange = Notification.Name("ArgonSidebarSideDidChange")
+    static let framelessDidChange = Notification.Name("ArgonFramelessDidChange")
 }
 
 @MainActor

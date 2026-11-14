@@ -73,6 +73,9 @@ final class BrowserWindow: NSWindow {
 final class ContentCardView: NSView {
     private(set) var pageView: NSView?
     var isFullBleed = false { didSet { updateLayer() } }
+    var roundedCorners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner] {
+        didSet { if roundedCorners != oldValue { updateLayer() } }
+    }
     // Set while the frame is translucent, so the empty card stays solid instead of showing the desktop.
     var solidBase: NSColor? { didSet { if solidBase != oldValue { updateLayer() } } }
 
@@ -91,7 +94,8 @@ final class ContentCardView: NSView {
     override var wantsUpdateLayer: Bool { true }
 
     override func updateLayer() {
-        layer?.cornerRadius = isFullBleed ? 0 : Metrics.cardRadius
+        layer?.cornerRadius = isFullBleed || roundedCorners.isEmpty ? 0 : Metrics.cardRadius
+        layer?.maskedCorners = roundedCorners
         if let solidBase {
             layer?.backgroundColor = Palette.opaque(Palette.placeholder, on: solidBase, appearance: effectiveAppearance).cgColor
         } else {
@@ -268,6 +272,7 @@ final class RootView: NSView {
     private var dockTicker: FrameTicker?
     private var lightsTicker: FrameTicker?
     var contentFullscreen = false { didSet { needsLayout = true; card.isFullBleed = contentFullscreen } }
+    var frameless = false { didSet { if frameless != oldValue { needsLayout = true } } }
     private(set) var frameColor: NSColor = Palette.ink
     private(set) var frameOpacity: CGFloat = 1
     private var shownOpacity: CGFloat = 1
@@ -355,7 +360,10 @@ final class RootView: NSView {
         edgeTracker.isHidden = !sidebarHidden || contentFullscreen || sidebarPeeking
         peekTracker.isHidden = !sidebarPeeking
         let floating = NSRect(x: inset, y: inset, width: w, height: h - 2 * inset)
-        let fullCard = bounds.insetBy(dx: inset, dy: inset)
+        let edge = frameless ? 0 : inset
+        let fullCard = bounds.insetBy(dx: edge, dy: edge)
+        let allCorners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        card.roundedCorners = frameless ? [] : allCorners
         backdrop.frame = bounds
         if contentFullscreen {
             card.frame = bounds
@@ -364,7 +372,7 @@ final class RootView: NSView {
             sidebar.frame = mirrored(floating)
         } else {
             let docked = NSRect(x: 0, y: 0, width: w, height: h)
-            let dockedCard = NSRect(x: w, y: inset, width: bounds.width - w - inset, height: h - 2 * inset)
+            let dockedCard = NSRect(x: w, y: edge, width: bounds.width - w - edge, height: h - 2 * edge)
             let hidden = dockFromPeek ? floating : NSRect(x: -w, y: 0, width: w, height: h)
             sidebar.frame = mirrored(Self.lerp(hidden, docked, dockProgress))
             card.frame = mirrored(Self.lerp(fullCard, dockedCard, dockProgress).integral)

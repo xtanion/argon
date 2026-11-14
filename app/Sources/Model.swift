@@ -111,7 +111,17 @@ final class BrowserTab: NSObject, TabDelegate {
         return url?.displayHost ?? "New Tab"
     }
 
-    var favicon: NSImage? { tab?.favicon ?? cachedFavicon }
+    private weak var shapedFaviconSource: NSImage?
+    private var shapedFavicon: NSImage?
+
+    var favicon: NSImage? {
+        guard let source = tab?.favicon ?? cachedFavicon else { return nil }
+        if source !== shapedFaviconSource {
+            shapedFaviconSource = source
+            shapedFavicon = source.uniformFavicon
+        }
+        return shapedFavicon
+    }
     var isLoading: Bool { tab?.isLoading ?? false }
     var loadProgress: Double { tab?.loadProgress ?? 0 }
 
@@ -435,6 +445,27 @@ extension NSImage {
         draw(in: NSRect(x: 0, y: 0, width: side, height: side))
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:])?.base64EncodedString()
+    }
+
+    // Every favicon is drawn into the same square, aspect-fit and clipped to one
+    // rounded corner radius, so square, round and wide icons line up.
+    var uniformFavicon: NSImage {
+        let side = Metrics.faviconSize
+        let source = self
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            let size = source.size
+            guard size.width > 0, size.height > 0 else { return false }
+            let scale = min(rect.width / size.width, rect.height / size.height)
+            let fitted = NSSize(width: size.width * scale, height: size.height * scale)
+            let target = NSRect(x: rect.midX - fitted.width / 2, y: rect.midY - fitted.height / 2,
+                                width: fitted.width, height: fitted.height)
+            NSGraphicsContext.current?.imageInterpolation = .high
+            NSBezierPath(roundedRect: rect, xRadius: side * 0.25, yRadius: side * 0.25).addClip()
+            source.draw(in: target, from: .zero, operation: .sourceOver, fraction: 1)
+            return true
+        }
+        image.accessibilityDescription = source.accessibilityDescription
+        return image
     }
 
     static func favicon(fromData string: String?) -> NSImage? {

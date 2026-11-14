@@ -92,15 +92,7 @@ final class GeneralSettingsPane: SettingsPane {
 
         let column = NSStackView.settingsColumn([chip, quitting, archive, updates, media, capture, profile])
         column.setCustomSpacing(20, after: chip)
-        view.pinCentered(column, width: SettingsStyle.width, top: contentInset)
-
-        let footer = makeFooter()
-        footer.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(footer)
-        NSLayoutConstraint.activate([
-            footer.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -18),
-        ])
+        view.pinScrolling(column, width: SettingsStyle.width, top: contentInset, footer: makeFooter())
     }
 
     override func reload() {
@@ -584,7 +576,7 @@ final class LinksSettingsPane: SettingsPane, NSTextFieldDelegate {
 
         let column = NSStackView.settingsColumn([little, intro, newRule, list])
         column.setCustomSpacing(22, after: little)
-        view.pinCentered(column, width: SettingsStyle.width, top: contentInset)
+        view.pinScrolling(column, width: SettingsStyle.width, top: contentInset)
         NotificationCenter.default.addObserver(self, selector: #selector(rulesChanged), name: .linkRulesDidChange, object: nil)
     }
 

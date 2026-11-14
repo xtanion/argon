@@ -37,6 +37,22 @@ final class BrowserWindow: NSWindow {
         collectionBehavior.insert(.fullScreenPrimary)
     }
 
+    // Chromium leaves mouse navigation to the embedder on macOS. Plain mice send side buttons 3 and 4;
+    // Logi Options+ and similar drivers send a swipe event instead (deltaX 1 for back, -1 for forward).
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .swipe {
+            if event.deltaX != 0 { navigate(back: event.deltaX > 0) }
+            return
+        }
+        super.sendEvent(event)
+        if event.type == .otherMouseUp, [3, 4].contains(event.buttonNumber) { navigate(back: event.buttonNumber == 3) }
+    }
+
+    private func navigate(back: Bool) {
+        let action = back ? #selector(BrowserWindowController.goBack(_:)) : #selector(BrowserWindowController.goForward(_:))
+        _ = windowController?.tryToPerform(action, with: nil)
+    }
+
     override func layoutIfNeeded() {
         super.layoutIfNeeded()
         positionTrafficLights()

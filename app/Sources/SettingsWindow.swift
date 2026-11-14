@@ -811,17 +811,56 @@ final class SettingsPopUp: NSPopUpButton {
 }
 
 extension NSView {
-    func pinCentered(_ content: NSView, width: CGFloat, top: CGFloat, bottom: CGFloat? = nil) {
+    // Panes taller than the fixed window scroll; the footer sits under the
+    // content, or at the bottom of the window when everything fits.
+    func pinScrolling(_ content: NSView, width: CGFloat, top: CGFloat, footer: NSView? = nil) {
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.borderType = .noBorder
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.contentView = TopAnchoredClipView()
+        let document = FlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = document
+        addSubview(scroll)
         content.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(content)
+        document.addSubview(content)
+        let clip = scroll.contentView
+        let fill = document.heightAnchor.constraint(equalTo: clip.heightAnchor)
+        fill.priority = .defaultLow
         var constraints = [
-            content.topAnchor.constraint(equalTo: topAnchor, constant: top),
-            content.centerXAnchor.constraint(equalTo: centerXAnchor),
+            scroll.topAnchor.constraint(equalTo: topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+            document.topAnchor.constraint(equalTo: clip.topAnchor),
+            document.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            document.widthAnchor.constraint(equalTo: clip.widthAnchor),
+            document.heightAnchor.constraint(greaterThanOrEqualTo: clip.heightAnchor),
+            fill,
+            content.topAnchor.constraint(equalTo: document.topAnchor, constant: top),
+            content.centerXAnchor.constraint(equalTo: document.centerXAnchor),
             content.widthAnchor.constraint(equalToConstant: width),
         ]
-        if let bottom { constraints.append(content.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -bottom)) }
+        if let footer {
+            footer.translatesAutoresizingMaskIntoConstraints = false
+            document.addSubview(footer)
+            constraints += [
+                footer.topAnchor.constraint(greaterThanOrEqualTo: content.bottomAnchor, constant: 24),
+                footer.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -18),
+                footer.centerXAnchor.constraint(equalTo: document.centerXAnchor),
+            ]
+        } else {
+            constraints.append(document.bottomAnchor.constraint(greaterThanOrEqualTo: content.bottomAnchor, constant: top))
+        }
         NSLayoutConstraint.activate(constraints)
     }
+}
+
+private final class TopAnchoredClipView: NSClipView {
+    override var isFlipped: Bool { true }
 }
 
 extension NSStackView {

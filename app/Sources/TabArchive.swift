@@ -101,7 +101,7 @@ final class ArchiveMenu: NSObject, NSMenuDelegate {
             }
             let title = entry.title.count > 60 ? String(entry.title.prefix(59)) + "\u{2026}" : entry.title
             let item = ClosureMenuItem(title.isEmpty ? entry.url : title) { ArchiveMenu.restore(entry) }
-            item.image = NSImage.favicon(fromData: entry.favicon) ?? .symbol("globe", size: 12)
+            item.image = NSImage.favicon(fromData: entry.favicon)?.uniformFavicon ?? .symbol("globe", size: 12)
             item.toolTip = "\(entry.url)\n\(entry.spaceName) \u{00B7} archived \(formatter.localizedString(for: entry.archived, relativeTo: Date()))"
             menu.addItem(item)
         }

@@ -20,7 +20,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     private let frost = FrostView()
     private let glyph = NSImageView()
     private let field = NSTextField()
-    private let divider = HairlineView(inset: 0, color: Palette.white(0x1F))
+    private let divider = NSView()
     private let initialText: String
     private var rows: [CommandRowView] = []
     private var suggestions: [Suggestion] = []
@@ -40,20 +40,21 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         super.init(frame: .zero)
 
         panel.wantsLayer = true
-        panel.layer?.cornerRadius = Metrics.cardRadius
+        panel.layer?.cornerRadius = Self.radius
         panel.layer?.cornerCurve = .continuous
         panel.layer?.shadowColor = NSColor.black.cgColor
         panel.layer?.shadowOpacity = Metrics.shadowOpacity
         panel.layer?.shadowRadius = Metrics.shadowRadius
         panel.layer?.shadowOffset = Metrics.shadowOffset
-        frost.cornerRadius = Metrics.cardRadius
+        frost.cornerRadius = Self.radius
         frost.frame = panel.bounds
         frost.autoresizingMask = [.width, .height]
         panel.addSubview(frost)
         updatePanelColor()
 
-        glyph.image = .symbol("magnifyingglass", size: 18)
-        glyph.contentTintColor = Palette.subtle
+        glyph.image = .symbol("magnifyingglass", size: 14, weight: .semibold)
+        glyph.imageScaling = .scaleNone
+        glyph.contentTintColor = Palette.text
 
         field.isBordered = false
         field.drawsBackground = false
@@ -70,6 +71,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         field.cell?.isScrollable = true
         field.cell?.wraps = false
 
+        divider.wantsLayer = true
         for view in [glyph, field, divider] as [NSView] { panel.addSubview(view) }
         addSubview(panel)
         rebuildSuggestions()
@@ -77,6 +79,12 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    private static let radius: CGFloat = 16
+    private static let header: CGFloat = 62
+    private static let rowHeight: CGFloat = 46
+    private static let rowGap: CGFloat = 4
+    private static let inset: CGFloat = 10
 
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
@@ -88,6 +96,9 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
 
     private func updatePanelColor() {
         frost.tint = Palette.commandBar(frame: frameColor)
+        var line: CGColor?
+        effectiveAppearance.performAsCurrentDrawingAppearance { line = Palette.white(0x1F).cgColor }
+        divider.layer?.backgroundColor = line
     }
 
     func activate() {
@@ -98,26 +109,29 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     override func layout() {
         super.layout()
         let width = min(max(bounds.width * 0.4, 560), min(800, bounds.width - 40))
-        let header: CGFloat = 62
+        let header = Self.header, rowHeight = Self.rowHeight, inset = Self.inset
         var height = header
         if !rows.isEmpty {
-            height += 1 + 6 + CGFloat(rows.count) * 46 + CGFloat(rows.count - 1) * 4 + 7
+            height += 1 + 8 + CGFloat(rows.count) * rowHeight + CGFloat(rows.count - 1) * Self.rowGap + inset
         }
         let top = max(20, bounds.height * 0.34 - header)
         panel.frame = NSRect(x: (bounds.width - width) / 2, y: top, width: width, height: height)
-        panel.layer?.shadowPath = CGPath(roundedRect: panel.bounds, cornerWidth: Metrics.cardRadius,
-                                         cornerHeight: Metrics.cardRadius, transform: nil)
+        panel.layer?.shadowPath = CGPath(roundedRect: panel.bounds, cornerWidth: Self.radius,
+                                         cornerHeight: Self.radius, transform: nil)
 
         let ph = panel.bounds.height
         func flip(_ y: CGFloat, _ h: CGFloat) -> CGFloat { ph - y - h }
-        glyph.frame = NSRect(x: 20, y: flip((header - 22) / 2, 22), width: 22, height: 22)
-        field.frame = NSRect(x: 54, y: flip((header - 26) / 2, 26), width: width - 54 - 20, height: 26)
+        glyph.frame = NSRect(x: 18, y: flip((header - 24) / 2, 24), width: 24, height: 24)
+        field.frame = NSRect(x: 48, y: flip((header - 26) / 2, 26), width: width - 48 - 22, height: 26)
         divider.isHidden = rows.isEmpty
-        divider.frame = NSRect(x: 0, y: flip(header, 1), width: width, height: 1)
-        var y = header + 1 + 6
+        let pixel = 1 / (window?.backingScaleFactor ?? 2)
+        let glyphWidth = glyph.image?.size.width ?? glyph.frame.width
+        let lineInset = (glyph.frame.minX + (glyph.frame.width - glyphWidth) / 2).rounded()
+        divider.frame = NSRect(x: lineInset, y: flip(header, pixel), width: width - lineInset * 2, height: pixel)
+        var y = header + 1 + 8
         for row in rows {
-            row.frame = NSRect(x: 7, y: flip(y, 46), width: width - 14, height: 46)
-            y += 46 + 4
+            row.frame = NSRect(x: inset, y: flip(y, rowHeight), width: width - inset * 2, height: rowHeight)
+            y += rowHeight + Self.rowGap
         }
     }
 
@@ -264,7 +278,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
         autocomplete?.favicon(for: url) { [weak self] image in
             guard let self else { return }
             self.pendingFavicons.remove(key)
-            guard let image else { return }
+            guard let image = image?.uniformFavicon else { return }
             self.favicons[key] = image
             for (index, suggestion) in self.suggestions.enumerated() {
                 if case .match(let other, _) = suggestion, other.destinationURL?.absoluteString == key,
@@ -458,7 +472,8 @@ final class CommandRowView: NSView {
         }
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = Metrics.buttonRadius
+        layer?.cornerRadius = Metrics.rowRadius
+        layer?.cornerCurve = .continuous
         icon.imageScaling = .scaleProportionallyUpOrDown
         arrowBox.wantsLayer = true
         arrowBox.layer?.cornerRadius = Metrics.buttonRadius

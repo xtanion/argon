@@ -109,6 +109,59 @@ index 6ea55af3da..c8cdb83528 100644
    content::ContentGpuClient* CreateContentGpuClient() override;
    content::ContentRendererClient* CreateContentRendererClient() override;
    content::ContentUtilityClient* CreateContentUtilityClient() override;
+diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
+index 37c881f5d2..886c48ca28 100644
+--- a/chrome/app/framework.exports
++++ b/chrome/app/framework.exports
+@@ -19,3 +19,21 @@
+ _ChromeAppModeStart_v8
+ _ChromeMain
+ _ChromeWebAppShortcutCopierMain
++
++_ACMain
++_OBJC_CLASS_$_ACApplication
++_OBJC_CLASS_$_ACAutocomplete
++_OBJC_CLASS_$_ACAutocompleteMatch
++_OBJC_CLASS_$_ACDownload
++_OBJC_CLASS_$_ACExtensionWindow
++_OBJC_CLASS_$_ACPasswordOffer
++_OBJC_CLASS_$_ACProfile
++_OBJC_CLASS_$_ACTab
++_OBJC_METACLASS_$_ACApplication
++_OBJC_METACLASS_$_ACAutocomplete
++_OBJC_METACLASS_$_ACAutocompleteMatch
++_OBJC_METACLASS_$_ACDownload
++_OBJC_METACLASS_$_ACExtensionWindow
++_OBJC_METACLASS_$_ACPasswordOffer
++_OBJC_METACLASS_$_ACProfile
++_OBJC_METACLASS_$_ACTab
+diff --git a/chrome/app/framework.order b/chrome/app/framework.order
+index 6dbc3aeff3..86d0b75be5 100644
+--- a/chrome/app/framework.order
++++ b/chrome/app/framework.order
+@@ -31,3 +31,22 @@ _ChromeWebAppShortcutCopierMain
+ 
+ # _ChromeMain must be listed last.  That's the whole point of this file.
+ _ChromeMain
++
++# Argon embedder API, exported after the Chrome entry points.
++_ACMain
++_OBJC_CLASS_$_ACApplication
++_OBJC_METACLASS_$_ACApplication
++_OBJC_CLASS_$_ACAutocompleteMatch
++_OBJC_METACLASS_$_ACAutocompleteMatch
++_OBJC_CLASS_$_ACAutocomplete
++_OBJC_METACLASS_$_ACAutocomplete
++_OBJC_CLASS_$_ACDownload
++_OBJC_METACLASS_$_ACDownload
++_OBJC_CLASS_$_ACExtensionWindow
++_OBJC_METACLASS_$_ACExtensionWindow
++_OBJC_CLASS_$_ACPasswordOffer
++_OBJC_METACLASS_$_ACPasswordOffer
++_OBJC_CLASS_$_ACProfile
++_OBJC_METACLASS_$_ACProfile
++_OBJC_CLASS_$_ACTab
++_OBJC_METACLASS_$_ACTab
 diff --git a/chrome/browser/app_controller_mac.mm b/chrome/browser/app_controller_mac.mm
 index ead883ef95..35a5afaef0 100644
 --- a/chrome/browser/app_controller_mac.mm
@@ -364,211 +417,6 @@ index 937debfe3f..a0900358a9 100644
      return;
    }
    if (auto* devtools_ui_controller =
-diff --git a/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm b/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm
-index 10829d1e59..a9cdea0d2b 100644
---- a/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm
-+++ b/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm
-@@ -78,12 +78,15 @@
-   views::Widget* widget = views::Widget::GetTopLevelWidgetForNativeView(
-       source_web_contents_->GetNativeView());
- 
--  if (!widget || headless::IsHeadlessMode()) {
-+  if (headless::IsHeadlessMode()) {
-     return;
-   }
- 
-+  // Embedders may host web contents in a plain AppKit view with no widget.
-   menu_controller_delegate_ = [[MenuControllerCocoaDelegateImpl alloc]
--      initWithParams:MenuControllerParamsForWidget(widget)];
-+      initWithParams:widget ? MenuControllerParamsForWidget(widget)
-+                            : views::MenuControllerParamsForColorProvider(
-+                                  &source_web_contents_->GetColorProvider())];
-   menu_controller_ =
-       [[MenuControllerCocoa alloc] initWithModel:&menu_model_
-                                    isContextMenu:YES
-@@ -97,7 +100,9 @@
- 
-   ui::ShowContextMenu(menu_controller_.menu, clickEvent, parent_view_,
-                       /*allow_nested_tasks=*/true,
--                      views::ElementTrackerViews::GetContextForWidget(widget));
-+                      widget ? views::ElementTrackerViews::GetContextForWidget(
-+                                   widget)
-+                             : ui::ElementContext());
- }
- 
- void RenderViewContextMenuMacCocoa::CancelToolkitMenu() {
-diff --git a/chrome/browser/ui/extensions/extension_install_ui_desktop.cc b/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
-index fd3290b4f6..8ef85600a8 100644
---- a/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
-+++ b/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
-@@ -8,6 +8,7 @@
- #include <utility>
- 
- #include "base/check.h"
-+#include "base/command_line.h"
- #include "base/functional/bind.h"
- #include "base/scoped_observation.h"
- #include "base/strings/utf_string_conversions.h"
-@@ -120,6 +121,12 @@ void ExtensionInstallUIDesktop::OnInstallSuccess(
-     return;
-   }
- 
-+  // The native shell has no Browser windows to host the post-install bubble;
-+  // opening one here would spawn a stray Chromium window.
-+  if (base::CommandLine::ForCurrentProcess()->HasSwitch("argon-embedder")) {
-+    return;
-+  }
-+
-   if (!profile()) {
-     // TODO(zelidrag): Figure out what exact conditions cause crash
-     // http://crbug.com/40293301 and write browser test to cover it.
-diff --git a/chrome/browser/ui/tab_helpers.h b/chrome/browser/ui/tab_helpers.h
-index c6e05eb620..dc7dd49d07 100644
---- a/chrome/browser/ui/tab_helpers.h
-+++ b/chrome/browser/ui/tab_helpers.h
-@@ -52,8 +52,14 @@ class TabModel;
- // See
- // https://chromium.googlesource.com/chromium/src/+/main/docs/chrome_browser_design_principles.md
- 
-+namespace argon_core {
-+class ACTabHost;
-+}
-+
- class TabHelpers {
-  private:
-+  friend class argon_core::ACTabHost;
-+
- #if BUILDFLAG(IS_ANDROID)
-   // ThinWebView is used to host WebContents on non-tab UIs in Android. Most
-   // clients of ThinWebView will need a major subset of the tab helpers.
-diff --git a/chrome/browser/ui/views/profiles/profile_picker_view.cc b/chrome/browser/ui/views/profiles/profile_picker_view.cc
-index bce0ed42f9..3e40de77f8 100644
---- a/chrome/browser/ui/views/profiles/profile_picker_view.cc
-+++ b/chrome/browser/ui/views/profiles/profile_picker_view.cc
-@@ -6,6 +6,7 @@
- 
- #include <algorithm>
- 
-+#include "base/command_line.h"
- #include "base/check_deref.h"
- #include "base/debug/dump_without_crashing.h"
- #include "base/feature_list.h"
-@@ -161,6 +162,11 @@ void ClearLockedProfilesFirstBrowserKeepAlive() {
- 
- // static
- void ProfilePicker::Show(Params&& params) {
-+  // The Argon native shell keeps one profile per Space and never shows
-+  // Chromium's picker.
-+  if (base::CommandLine::ForCurrentProcess()->HasSwitch("argon-embedder")) {
-+    return;
-+  }
-   // Re-open with new params if necessary.
-   if (g_profile_picker_view && g_profile_picker_view->MaybeReopen(params)) {
-     return;
-diff --git a/components/constrained_window/constrained_window_views.cc b/components/constrained_window/constrained_window_views.cc
-index cd235694d9..d9c29fc8a3 100644
---- a/components/constrained_window/constrained_window_views.cc
-+++ b/components/constrained_window/constrained_window_views.cc
-@@ -172,7 +172,9 @@ void UpdateModalDialogPosition(views::Widget* widget,
-   // modal dialogs are displayed as sheets, and their position is managed by a
-   // ConstrainedWindowSheetController instance.
-   if (!host_widget) {
--    widget->SetSize(size);
-+    if (!dialog_host->PlaceDialog(widget->GetNativeWindow(), size)) {
-+      widget->SetSize(size);
-+    }
-     return;
-   }
- 
-diff --git a/components/web_modal/modal_dialog_host.cc b/components/web_modal/modal_dialog_host.cc
-index 35f4b8d767..b7129b5528 100644
---- a/components/web_modal/modal_dialog_host.cc
-+++ b/components/web_modal/modal_dialog_host.cc
-@@ -19,4 +19,9 @@ bool ModalDialogHost::ShouldConstrainDialogBoundsByHost() {
- 
- void ModalDialogHost::NotifyPositionRequiresUpdate() {}
- 
-+bool ModalDialogHost::PlaceDialog(gfx::NativeWindow dialog,
-+                                  const gfx::Size& size) {
-+  return false;
-+}
-+
- }  // namespace web_modal
-diff --git a/components/web_modal/modal_dialog_host.h b/components/web_modal/modal_dialog_host.h
-index a1410173b8..7149324548 100644
---- a/components/web_modal/modal_dialog_host.h
-+++ b/components/web_modal/modal_dialog_host.h
-@@ -54,6 +54,10 @@ class WEB_MODAL_EXPORT ModalDialogHost {
- 
-   // Notify observers that the dialog position needs to be updated.
-   virtual void NotifyPositionRequiresUpdate();
-+
-+  // Lets a host whose view is not inside a views::Widget place `dialog`
-+  // itself. Returns false to fall back to only resizing the dialog.
-+  virtual bool PlaceDialog(gfx::NativeWindow dialog, const gfx::Size& size);
- };
- 
- }  // namespace web_modal
-diff --git a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc
-index 9905dd3b15..8f848f20f0 100644
---- a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc
-+++ b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc
-@@ -16,7 +16,11 @@ namespace views {
- 
- remote_cocoa::mojom::MenuControllerParamsPtr MenuControllerParamsForWidget(
-     Widget* widget) {
--  auto* color_provider = widget->GetColorProvider();
-+  return MenuControllerParamsForColorProvider(widget->GetColorProvider());
-+}
-+
-+remote_cocoa::mojom::MenuControllerParamsPtr
-+MenuControllerParamsForColorProvider(const ui::ColorProvider* color_provider) {
-   auto params = remote_cocoa::mojom::MenuControllerParams::New();
- 
-   // The preferred font is slightly smaller and slightly more bold than the
-diff --git a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h
-index b8bc27787d..5a80e1e6bc 100644
---- a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h
-+++ b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h
-@@ -8,6 +8,10 @@
- #include "components/remote_cocoa/common/menu.mojom-forward.h"
- #include "ui/views/views_export.h"
- 
-+namespace ui {
-+class ColorProvider;
-+}
-+
- namespace views {
- class Widget;
- 
-@@ -16,6 +20,10 @@ class Widget;
- VIEWS_EXPORT remote_cocoa::mojom::MenuControllerParamsPtr
- MenuControllerParamsForWidget(Widget* widget);
- 
-+// Same as above for menus over views that are not inside a views::Widget.
-+VIEWS_EXPORT remote_cocoa::mojom::MenuControllerParamsPtr
-+MenuControllerParamsForColorProvider(const ui::ColorProvider* color_provider);
-+
- }  // namespace views
- 
- #endif  // UI_VIEWS_CONTROLS_MENU_MENU_CONTROLLER_COCOA_DELEGATE_PARAMS_H_
-diff --git a/ui/views/widget/native_widget_mac.mm b/ui/views/widget/native_widget_mac.mm
-index 02db68344e..0305b2d804 100644
---- a/ui/views/widget/native_widget_mac.mm
-+++ b/ui/views/widget/native_widget_mac.mm
-@@ -598,8 +598,11 @@ void OnDidChangeFocus(View* focused_before, View* focused_now) override {
-   // A peculiarity of the constrained window framework is that it permits a
-   // dialog of ModalType::kWindow to have a null parent window; falling back to
-   // a non-modal window in this case.
-+  // Embedders whose web contents live in a plain AppKit view host child-modal
-+  // dialogs without a parent widget and position them themselves.
-   DCHECK(ns_window_host_->parent() ||
--         modal_type == ui::mojom::ModalType::kWindow);
-+         modal_type == ui::mojom::ModalType::kWindow ||
-+         modal_type == ui::mojom::ModalType::kChild);
- 
-   // Everything happens upon show.
- }
 diff --git a/chrome/browser/extensions/api/tabs/tabs_api.cc b/chrome/browser/extensions/api/tabs/tabs_api.cc
 index 2378fcd5da..4326fa9f4c 100644
 --- a/chrome/browser/extensions/api/tabs/tabs_api.cc
@@ -978,6 +826,64 @@ index 335fa10824..d84eb1f0b0 100644
    // Gets the extensions-specific Group ID.
    static int GetGroupId(const tab_groups::TabGroupId& id);
  
+diff --git a/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm b/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm
+index 10829d1e59..a9cdea0d2b 100644
+--- a/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm
++++ b/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm
+@@ -78,12 +78,15 @@
+   views::Widget* widget = views::Widget::GetTopLevelWidgetForNativeView(
+       source_web_contents_->GetNativeView());
+ 
+-  if (!widget || headless::IsHeadlessMode()) {
++  if (headless::IsHeadlessMode()) {
+     return;
+   }
+ 
++  // Embedders may host web contents in a plain AppKit view with no widget.
+   menu_controller_delegate_ = [[MenuControllerCocoaDelegateImpl alloc]
+-      initWithParams:MenuControllerParamsForWidget(widget)];
++      initWithParams:widget ? MenuControllerParamsForWidget(widget)
++                            : views::MenuControllerParamsForColorProvider(
++                                  &source_web_contents_->GetColorProvider())];
+   menu_controller_ =
+       [[MenuControllerCocoa alloc] initWithModel:&menu_model_
+                                    isContextMenu:YES
+@@ -97,7 +100,9 @@
+ 
+   ui::ShowContextMenu(menu_controller_.menu, clickEvent, parent_view_,
+                       /*allow_nested_tasks=*/true,
+-                      views::ElementTrackerViews::GetContextForWidget(widget));
++                      widget ? views::ElementTrackerViews::GetContextForWidget(
++                                   widget)
++                             : ui::ElementContext());
+ }
+ 
+ void RenderViewContextMenuMacCocoa::CancelToolkitMenu() {
+diff --git a/chrome/browser/ui/extensions/extension_install_ui_desktop.cc b/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
+index fd3290b4f6..8ef85600a8 100644
+--- a/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
++++ b/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
+@@ -8,6 +8,7 @@
+ #include <utility>
+ 
+ #include "base/check.h"
++#include "base/command_line.h"
+ #include "base/functional/bind.h"
+ #include "base/scoped_observation.h"
+ #include "base/strings/utf_string_conversions.h"
+@@ -120,6 +121,12 @@ void ExtensionInstallUIDesktop::OnInstallSuccess(
+     return;
+   }
+ 
++  // The native shell has no Browser windows to host the post-install bubble;
++  // opening one here would spawn a stray Chromium window.
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch("argon-embedder")) {
++    return;
++  }
++
+   if (!profile()) {
+     // TODO(zelidrag): Figure out what exact conditions cause crash
+     // http://crbug.com/40293301 and write browser test to cover it.
 diff --git a/chrome/browser/ui/passwords/passwords_client_ui_delegate.cc b/chrome/browser/ui/passwords/passwords_client_ui_delegate.cc
 index 419655922c..27e1d695a8 100644
 --- a/chrome/browser/ui/passwords/passwords_client_ui_delegate.cc
@@ -1023,56 +929,387 @@ index 2b03bda160..2c44c5e7d6 100644
 +    ExternalPasswordsClientUIDelegateLookup lookup);
 +
  #endif  // CHROME_BROWSER_UI_PASSWORDS_PASSWORDS_CLIENT_UI_DELEGATE_H_
-diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 37c881f5d2..886c48ca28 100644
---- a/chrome/app/framework.exports
-+++ b/chrome/app/framework.exports
-@@ -19,3 +19,21 @@
- _ChromeAppModeStart_v8
- _ChromeMain
- _ChromeWebAppShortcutCopierMain
-+
-+_ACMain
-+_OBJC_CLASS_$_ACApplication
-+_OBJC_CLASS_$_ACAutocomplete
-+_OBJC_CLASS_$_ACAutocompleteMatch
-+_OBJC_CLASS_$_ACDownload
-+_OBJC_CLASS_$_ACExtensionWindow
-+_OBJC_CLASS_$_ACPasswordOffer
-+_OBJC_CLASS_$_ACProfile
-+_OBJC_CLASS_$_ACTab
-+_OBJC_METACLASS_$_ACApplication
-+_OBJC_METACLASS_$_ACAutocomplete
-+_OBJC_METACLASS_$_ACAutocompleteMatch
-+_OBJC_METACLASS_$_ACDownload
-+_OBJC_METACLASS_$_ACExtensionWindow
-+_OBJC_METACLASS_$_ACPasswordOffer
-+_OBJC_METACLASS_$_ACProfile
-+_OBJC_METACLASS_$_ACTab
-diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index 6dbc3aeff3..86d0b75be5 100644
---- a/chrome/app/framework.order
-+++ b/chrome/app/framework.order
-@@ -31,3 +31,22 @@ _ChromeWebAppShortcutCopierMain
+diff --git a/chrome/browser/ui/tab_helpers.h b/chrome/browser/ui/tab_helpers.h
+index c6e05eb620..dc7dd49d07 100644
+--- a/chrome/browser/ui/tab_helpers.h
++++ b/chrome/browser/ui/tab_helpers.h
+@@ -52,8 +52,14 @@ class TabModel;
+ // See
+ // https://chromium.googlesource.com/chromium/src/+/main/docs/chrome_browser_design_principles.md
  
- # _ChromeMain must be listed last.  That's the whole point of this file.
- _ChromeMain
++namespace argon_core {
++class ACTabHost;
++}
 +
-+# Argon embedder API, exported after the Chrome entry points.
-+_ACMain
-+_OBJC_CLASS_$_ACApplication
-+_OBJC_METACLASS_$_ACApplication
-+_OBJC_CLASS_$_ACAutocompleteMatch
-+_OBJC_METACLASS_$_ACAutocompleteMatch
-+_OBJC_CLASS_$_ACAutocomplete
-+_OBJC_METACLASS_$_ACAutocomplete
-+_OBJC_CLASS_$_ACDownload
-+_OBJC_METACLASS_$_ACDownload
-+_OBJC_CLASS_$_ACExtensionWindow
-+_OBJC_METACLASS_$_ACExtensionWindow
-+_OBJC_CLASS_$_ACPasswordOffer
-+_OBJC_METACLASS_$_ACPasswordOffer
-+_OBJC_CLASS_$_ACProfile
-+_OBJC_METACLASS_$_ACProfile
-+_OBJC_CLASS_$_ACTab
-+_OBJC_METACLASS_$_ACTab
+ class TabHelpers {
+  private:
++  friend class argon_core::ACTabHost;
++
+ #if BUILDFLAG(IS_ANDROID)
+   // ThinWebView is used to host WebContents on non-tab UIs in Android. Most
+   // clients of ThinWebView will need a major subset of the tab helpers.
+diff --git a/chrome/browser/ui/views/overlay/BUILD.gn b/chrome/browser/ui/views/overlay/BUILD.gn
+index 82beb8fabd..f90d6ad391 100644
+--- a/chrome/browser/ui/views/overlay/BUILD.gn
++++ b/chrome/browser/ui/views/overlay/BUILD.gn
+@@ -8,6 +8,7 @@ assert(toolkit_views)
+ 
+ source_set("overlay") {
+   public = [
++    "argon_symbol.h",
+     "back_to_tab_button.h",
+     "back_to_tab_label_button.h",
+     "close_image_button.h",
+@@ -91,7 +92,10 @@ source_set("impl") {
+   # allow_circular_includes_from entry on //chrome/browser/ui:ui.
+ 
+   if (is_mac) {
+-    sources += [ "video_overlay_window_native_widget_mac.mm" ]
++    sources += [
++      "argon_symbol_mac.mm",
++      "video_overlay_window_native_widget_mac.mm",
++    ]
+     deps += [ "//components/remote_cocoa/common:mojo" ]
+     frameworks = [ "Cocoa.framework" ]
+   }
+diff --git a/chrome/browser/ui/views/overlay/argon_symbol.h b/chrome/browser/ui/views/overlay/argon_symbol.h
+new file mode 100644
+index 0000000000..985833217d
+--- /dev/null
++++ b/chrome/browser/ui/views/overlay/argon_symbol.h
+@@ -0,0 +1,23 @@
++// Copyright 2026 The Argon Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_OVERLAY_ARGON_SYMBOL_H_
++#define CHROME_BROWSER_UI_VIEWS_OVERLAY_ARGON_SYMBOL_H_
++
++#include "ui/base/models/image_model.h"
++
++namespace argon {
++
++inline constexpr int kPipButtonSize = 28;
++inline constexpr int kPipButtonMargin = 6;
++inline constexpr int kPipButtonGap = 2;
++inline constexpr int kPipButtonRadius = 6;
++inline constexpr int kPipWindowRadius = 12;
++
++// A white SF Symbol at regular weight, centred on a square canvas.
++ui::ImageModel PipSymbol(const char* name, int point_size, int canvas_size);
++
++}  // namespace argon
++
++#endif  // CHROME_BROWSER_UI_VIEWS_OVERLAY_ARGON_SYMBOL_H_
+diff --git a/chrome/browser/ui/views/overlay/argon_symbol_mac.mm b/chrome/browser/ui/views/overlay/argon_symbol_mac.mm
+new file mode 100644
+index 0000000000..17fb1e006b
+--- /dev/null
++++ b/chrome/browser/ui/views/overlay/argon_symbol_mac.mm
+@@ -0,0 +1,45 @@
++// Copyright 2026 The Argon Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/overlay/argon_symbol.h"
++
++#import <AppKit/AppKit.h>
++
++#include <cmath>
++
++#include "base/strings/sys_string_conversions.h"
++#include "ui/gfx/image/image_skia.h"
++#include "ui/gfx/image/image_skia_util_mac.h"
++
++namespace argon {
++
++ui::ImageModel PipSymbol(const char* name, int point_size, int canvas_size) {
++  NSImageSymbolConfiguration* config = [NSImageSymbolConfiguration
++      configurationWithPointSize:point_size
++                          weight:NSFontWeightRegular];
++  NSImage* symbol =
++      [[NSImage imageWithSystemSymbolName:base::SysUTF8ToNSString(name)
++                 accessibilityDescription:nil]
++          imageWithSymbolConfiguration:config];
++  if (!symbol) {
++    return ui::ImageModel();
++  }
++  NSSize canvas = NSMakeSize(canvas_size, canvas_size);
++  NSImage* image = [NSImage
++       imageWithSize:canvas
++             flipped:NO
++      drawingHandler:^BOOL(NSRect bounds) {
++        NSSize size = symbol.size;
++        NSRect rect = NSMakeRect(std::round((canvas.width - size.width) / 2),
++                                 std::round((canvas.height - size.height) / 2),
++                                 size.width, size.height);
++        [symbol drawInRect:rect];
++        [NSColor.whiteColor set];
++        NSRectFillUsingOperation(rect, NSCompositingOperationSourceAtop);
++        return YES;
++      }];
++  return ui::ImageModel::FromImageSkia(gfx::ImageSkiaFromNSImage(image));
++}
++
++}  // namespace argon
+diff --git a/chrome/browser/ui/views/overlay/back_to_tab_button.cc b/chrome/browser/ui/views/overlay/back_to_tab_button.cc
+index 2aad3646bf..bbd7376444 100644
+--- a/chrome/browser/ui/views/overlay/back_to_tab_button.cc
++++ b/chrome/browser/ui/views/overlay/back_to_tab_button.cc
+@@ -5,6 +5,7 @@
+ #include "chrome/browser/ui/views/overlay/back_to_tab_button.h"
+ 
+ #include "chrome/browser/ui/color/chrome_color_id.h"
++#include "chrome/browser/ui/views/overlay/argon_symbol.h"
+ #include "chrome/grit/generated_resources.h"
+ #include "components/vector_icons/vector_icons.h"
+ #include "ui/base/l10n/l10n_util.h"
+@@ -13,26 +14,10 @@
+ #include "ui/base/ui_base_features.h"
+ #include "ui/views/accessibility/view_accessibility.h"
+ 
+-namespace {
+-
+-constexpr int kBackToTabButtonVerticalMargin = 5;
+-constexpr int kBackToTabButtonHorizontalMargin = 28;
+-constexpr int kBackToTabButtonSize = 24;
+-constexpr int kBackToTabButtonIconSize = 16;
+-
+-}  // namespace
+-
+ OverlayWindowBackToTabButton::OverlayWindowBackToTabButton(
+     PressedCallback callback)
+     : OverlayWindowImageButton(std::move(callback)) {
+-  SetSize(gfx::Size(kBackToTabButtonSize, kBackToTabButtonSize));
+-
+-  SetImageModel(views::Button::STATE_NORMAL,
+-                ui::ImageModel::FromVectorIcon(
+-                    features::IsRoundedIconsEnabled()
+-                        ? vector_icons::kBackToTabIcon
+-                        : vector_icons::kBackToTabChromeRefreshOldIcon,
+-                    kColorPipWindowForeground, kBackToTabButtonIconSize));
++  UseArgonSymbol("arrow.up.left", 13);
+ 
+   // Accessibility.
+   const std::u16string button_label(l10n_util::GetStringUTF16(
+@@ -42,9 +27,8 @@ OverlayWindowBackToTabButton::OverlayWindowBackToTabButton(
+ }
+ 
+ void OverlayWindowBackToTabButton::SetPosition(const gfx::Size& size) {
+-  views::ImageButton::SetPosition(gfx::Point(
+-      size.width() - kBackToTabButtonSize - kBackToTabButtonHorizontalMargin,
+-      kBackToTabButtonVerticalMargin));
++  views::ImageButton::SetPosition(
++      gfx::Point(argon::kPipButtonMargin, argon::kPipButtonMargin));
+ }
+ 
+ BEGIN_METADATA(OverlayWindowBackToTabButton)
+diff --git a/chrome/browser/ui/views/overlay/close_image_button.cc b/chrome/browser/ui/views/overlay/close_image_button.cc
+index ffaf5f5f5f..1c43cfefca 100644
+--- a/chrome/browser/ui/views/overlay/close_image_button.cc
++++ b/chrome/browser/ui/views/overlay/close_image_button.cc
+@@ -5,6 +5,7 @@
+ #include "chrome/browser/ui/views/overlay/close_image_button.h"
+ 
+ #include "chrome/browser/ui/color/chrome_color_id.h"
++#include "chrome/browser/ui/views/overlay/argon_symbol.h"
+ #include "chrome/grit/generated_resources.h"
+ #include "components/vector_icons/vector_icons.h"
+ #include "ui/base/l10n/l10n_util.h"
+@@ -13,25 +14,9 @@
+ #include "ui/base/ui_base_features.h"
+ #include "ui/views/accessibility/view_accessibility.h"
+ 
+-namespace {
+-
+-constexpr int kCloseButtonTopMargin = 5;
+-constexpr int kCloseButtonMargin = 4;
+-constexpr int kCloseButtonSize = 24;
+-constexpr int kCloseButtonIconSize = 16;
+-
+-}  // namespace
+-
+ CloseImageButton::CloseImageButton(PressedCallback callback)
+     : OverlayWindowImageButton(std::move(callback)) {
+-  SetSize(gfx::Size(kCloseButtonSize, kCloseButtonSize));
+-
+-  auto* icon = &(features::IsRoundedIconsEnabled()
+-                     ? vector_icons::kCloseIcon
+-                     : vector_icons::kCloseChromeRefreshOldIcon);
+-  SetImageModel(views::Button::STATE_NORMAL,
+-                ui::ImageModel::FromVectorIcon(*icon, kColorPipWindowForeground,
+-                                               kCloseButtonIconSize));
++  UseArgonSymbol("xmark", 13);
+ 
+   // Accessibility.
+   const std::u16string close_button_label(
+@@ -44,8 +29,8 @@ void CloseImageButton::SetPosition(
+     const gfx::Size& size,
+     VideoOverlayWindowViews::WindowQuadrant quadrant) {
+   views::ImageButton::SetPosition(
+-      gfx::Point(size.width() - kCloseButtonSize - kCloseButtonMargin,
+-                 kCloseButtonTopMargin));
++      gfx::Point(size.width() - argon::kPipButtonSize - argon::kPipButtonMargin,
++                 argon::kPipButtonMargin));
+ }
+ 
+ BEGIN_METADATA(CloseImageButton)
+diff --git a/chrome/browser/ui/views/overlay/minimize_button.cc b/chrome/browser/ui/views/overlay/minimize_button.cc
+index 39989a6119..694b118900 100644
+--- a/chrome/browser/ui/views/overlay/minimize_button.cc
++++ b/chrome/browser/ui/views/overlay/minimize_button.cc
+@@ -6,6 +6,7 @@
+ 
+ #include "chrome/app/vector_icons/vector_icons.h"
+ #include "chrome/browser/ui/color/chrome_color_id.h"
++#include "chrome/browser/ui/views/overlay/argon_symbol.h"
+ #include "chrome/grit/generated_resources.h"
+ #include "ui/base/l10n/l10n_util.h"
+ #include "ui/base/metadata/metadata_impl_macros.h"
+@@ -13,26 +14,10 @@
+ #include "ui/base/ui_base_features.h"
+ #include "ui/views/accessibility/view_accessibility.h"
+ 
+-namespace {
+-
+-constexpr int kMinimizeButtonVerticalMargin = 5;
+-constexpr int kMinimizeButtonHorizontalMargin = 52;
+-constexpr int kMinimizeButtonSize = 24;
+-constexpr int kMinimizeButtonIconSize = 16;
+-
+-}  // namespace
+-
+ OverlayWindowMinimizeButton::OverlayWindowMinimizeButton(
+     PressedCallback callback)
+     : OverlayWindowImageButton(std::move(callback)) {
+-  SetSize(gfx::Size(kMinimizeButtonSize, kMinimizeButtonSize));
+-
+-  SetImageModel(views::Button::STATE_NORMAL,
+-                ui::ImageModel::FromVectorIcon(features::IsRoundedIconsEnabled()
+-                                                   ? kChromeMinimizeIcon
+-                                                   : kChromiumMinimizeOldIcon,
+-                                               kColorPipWindowForeground,
+-                                               kMinimizeButtonIconSize));
++  UseArgonSymbol("minus", 14);
+ 
+   // Accessibility.
+   const std::u16string button_label(
+@@ -42,9 +27,10 @@ OverlayWindowMinimizeButton::OverlayWindowMinimizeButton(
+ }
+ 
+ void OverlayWindowMinimizeButton::SetPosition(const gfx::Size& size) {
+-  views::ImageButton::SetPosition(gfx::Point(
+-      size.width() - kMinimizeButtonSize - kMinimizeButtonHorizontalMargin,
+-      kMinimizeButtonVerticalMargin));
++  views::ImageButton::SetPosition(
++      gfx::Point(size.width() - argon::kPipButtonMargin -
++                     2 * argon::kPipButtonSize - argon::kPipButtonGap,
++                 argon::kPipButtonMargin));
+ }
+ 
+ BEGIN_METADATA(OverlayWindowMinimizeButton)
+diff --git a/chrome/browser/ui/views/overlay/overlay_window_image_button.cc b/chrome/browser/ui/views/overlay/overlay_window_image_button.cc
+index 0e5147d3aa..f046346034 100644
+--- a/chrome/browser/ui/views/overlay/overlay_window_image_button.cc
++++ b/chrome/browser/ui/views/overlay/overlay_window_image_button.cc
+@@ -5,6 +5,7 @@
+ #include "chrome/browser/ui/views/overlay/overlay_window_image_button.h"
+ 
+ #include "chrome/browser/ui/color/chrome_color_id.h"
++#include "chrome/browser/ui/views/overlay/argon_symbol.h"
+ #include "ui/base/cursor/cursor.h"
+ #include "ui/base/metadata/metadata_impl_macros.h"
+ #include "ui/views/animation/ink_drop.h"
+@@ -27,5 +28,15 @@ ui::Cursor OverlayWindowImageButton::GetCursor(const ui::MouseEvent& event) {
+   return ui::mojom::CursorType::kHand;
+ }
+ 
++void OverlayWindowImageButton::UseArgonSymbol(const char* symbol,
++                                              int point_size) {
++  SetSize(gfx::Size(argon::kPipButtonSize, argon::kPipButtonSize));
++  SetImageModel(views::Button::STATE_NORMAL,
++                argon::PipSymbol(symbol, point_size, argon::kPipButtonSize));
++  views::InstallRoundRectHighlightPathGenerator(this, gfx::Insets(),
++                                                argon::kPipButtonRadius);
++  views::InkDrop::Get(this)->SetHighlightOpacity(0.16f);
++}
++
+ BEGIN_METADATA(OverlayWindowImageButton)
+ END_METADATA
+diff --git a/chrome/browser/ui/views/overlay/overlay_window_image_button.h b/chrome/browser/ui/views/overlay/overlay_window_image_button.h
+index 6592f4593c..a47771c65a 100644
+--- a/chrome/browser/ui/views/overlay/overlay_window_image_button.h
++++ b/chrome/browser/ui/views/overlay/overlay_window_image_button.h
+@@ -22,6 +22,9 @@ class OverlayWindowImageButton : public views::ImageButton {
+ 
+   // views::View:
+   ui::Cursor GetCursor(const ui::MouseEvent& event) override;
++
++  // Argon's toolbar style: an SF Symbol on a rounded-rect hover highlight.
++  void UseArgonSymbol(const char* symbol, int point_size);
+ };
+ 
+ #endif  // CHROME_BROWSER_UI_VIEWS_OVERLAY_OVERLAY_WINDOW_IMAGE_BUTTON_H_
+diff --git a/chrome/browser/ui/views/overlay/video_overlay_window_native_widget_mac.mm b/chrome/browser/ui/views/overlay/video_overlay_window_native_widget_mac.mm
+index ba3d0d2018..a3f1865578 100644
+--- a/chrome/browser/ui/views/overlay/video_overlay_window_native_widget_mac.mm
++++ b/chrome/browser/ui/views/overlay/video_overlay_window_native_widget_mac.mm
+@@ -19,6 +19,8 @@
+ void VideoOverlayWindowNativeWidgetMac::PopulateCreateWindowParams(
+     const views::Widget::InitParams& widget_params,
+     remote_cocoa::mojom::CreateWindowParams* params) {
+-  params->window_class = remote_cocoa::mojom::WindowClass::kFrameless;
+-  params->style_mask = NSWindowStyleMaskFullSizeContentView;
++  // Argon: a borderless window, so the only edge is the rounded content
++  // layer. The frameless class keeps a titled frame that draws a top line.
++  params->window_class = remote_cocoa::mojom::WindowClass::kDefault;
++  params->style_mask = NSWindowStyleMaskBorderless;
+ }
+diff --git a/chrome/browser/ui/views/overlay/video_overlay_window_views.cc b/chrome/browser/ui/views/overlay/video_overlay_window_views.cc
+index 0afdeb691c..fe77c900a9 100644
+--- a/chrome/browser/ui/views/overlay/video_overlay_window_views.cc
++++ b/chrome/browser/ui/views/overlay/video_overlay_window_views.cc
+@@ -27,6 +27,7 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+ #include "chrome/browser/ui/color/chrome_color_id.h"
++#include "chrome/browser/ui/views/overlay/argon_symbol.h"
+ #include "chrome/browser/ui/views/overlay/back_to_tab_button.h"
+ #include "chrome/browser/ui/views/overlay/back_to_tab_label_button.h"
+ #include "chrome/browser/ui/views/overlay/close_image_button.h"
+@@ -358,6 +359,7 @@ std::unique_ptr<VideoOverlayWindowViews> VideoOverlayWindowViews::Create(
+   // though we're using `views::Widget::InitParams::remove_standard_frame`.
+   params.native_widget =
+       new VideoOverlayWindowNativeWidgetMac(overlay_window.get());
++  params.rounded_corners = gfx::RoundedCornersF(argon::kPipWindowRadius);
+ #endif  // BUILDFLAG(IS_MAC)
+ 
+ #if BUILDFLAG(IS_CHROMEOS)
+@@ -1112,6 +1114,7 @@ void VideoOverlayWindowViews::SetUpViews() {
+   origin->SetBackgroundColor(SK_ColorTRANSPARENT);
+   origin->SetHorizontalAlignment(gfx::ALIGN_LEFT);
+   origin->SetElideBehavior(gfx::ELIDE_HEAD);
++  origin->SetVisible(false);
+ 
+   auto minimize_button = std::make_unique<
+       OverlayWindowMinimizeButton>(base::BindRepeating(
+@@ -1497,14 +1500,15 @@ void VideoOverlayWindowViews::OnUpdateControlsBounds() {
+   UpdateResizeHandleBounds(quadrant);
+ #endif
+ 
+-  constexpr int kTopControlsHeight = 34;
++  constexpr int kTopControlsHeight = 40;
+   constexpr int kBottomControlsHeight = 64;
+   constexpr int kTopScrimHeight = 160;
+   constexpr int kBottomScrimHeight = 160;
+-  constexpr int kFaviconLeftMargin = 8;
+-  constexpr int kFaviconTopMargin = 5;
++  constexpr int kFaviconLeftMargin =
++      argon::kPipButtonMargin + argon::kPipButtonSize + 4;
++  constexpr int kFaviconTopMargin = 8;
+   constexpr int kFaviconRightMargin = 4;
+-  constexpr int kOriginTopMargin = 5;
++  constexpr int kOriginTopMargin = 8;
+   constexpr int kOriginHeight = 24;
+   constexpr int kOriginRightMargin = 80;
+   constexpr int kProgressBarHeight = 26;

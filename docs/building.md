@@ -131,6 +131,10 @@ Chromium without them. All of them are in `patches/argon/embedder-hooks.patch`:
   page context menus without a views widget.
 - `chrome/browser/devtools`: DevTools docks inside Argon's tab view, and Argon
   tabs count as DevTools "page" targets.
+- `chrome/browser/ui/views/overlay`: the picture in picture window's top bar in
+  Argon's style (back to tab on the left, minimize and close on the right, SF
+  Symbols). `argon_symbol.h` and `argon_symbol_mac.mm` are new files, so mark
+  them with `git add -N` before exporting.
 
 After changing any of those files, re-export the patch:
 
@@ -142,7 +146,12 @@ git diff -- chrome/app chrome/BUILD.gn chrome/browser/ui/tab_helpers.h \
   ui/views/widget/native_widget_mac.mm chrome/browser/app_controller_mac.mm \
   chrome/browser/ui/extensions/extension_install_ui_desktop.cc \
   ui/views/controls/menu chrome/browser/ui/cocoa/renderer_context_menu \
-  chrome/browser/devtools > ~/argon/patches/argon/embedder-hooks.patch
+  chrome/browser/devtools chrome/browser/ui/views/overlay \
+  chrome/browser/extensions/api/tabs chrome/browser/extensions/extension_tab_util.cc \
+  chrome/browser/extensions/extension_tab_util.h \
+  chrome/browser/ui/passwords/passwords_client_ui_delegate.cc \
+  chrome/browser/ui/passwords/passwords_client_ui_delegate.h \
+  > ~/argon/patches/argon/embedder-hooks.patch
 ```
 
 ## Conventions

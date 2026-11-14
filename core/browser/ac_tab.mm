@@ -556,6 +556,13 @@ void CloseAllTabs() {
   }
 }
 
+- (void)hostRequestedActivation {
+  id<ACTabDelegate> delegate = self.delegate;
+  if ([delegate respondsToSelector:@selector(tabDidRequestActivation:)]) {
+    [delegate tabDidRequestActivation:self];
+  }
+}
+
 - (void)hostRequestedFullscreen:(BOOL)fullscreen {
   id<ACTabDelegate> delegate = self.delegate;
   if ([delegate respondsToSelector:@selector(tab:didRequestFullscreen:)]) {

@@ -39,6 +39,9 @@ NS_SWIFT_NAME(TabDelegate)
          disposition:(ACTabOpenDisposition)disposition;
 // The page asked to close itself (window.close).
 - (void)tabDidRequestClose:(ACTab*)tab;
+// Something outside the tab asked to bring it forward, such as the picture in
+// picture window's back to tab button.
+- (void)tabDidRequestActivation:(ACTab*)tab;
 - (void)tab:(ACTab*)tab didRequestFullscreen:(BOOL)fullscreen;
 // Find-in-page results for the current search. `activeMatch` is 1-based and 0
 // while the count is still being computed.

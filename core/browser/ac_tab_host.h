@@ -99,6 +99,7 @@ class ACTabHost : public content::WebContentsDelegate,
       bool user_gesture,
       bool* was_blocked) override;
   void CloseContents(content::WebContents* source) override;
+  void ActivateContents(content::WebContents* contents) override;
   void NavigationStateChanged(content::WebContents* source,
                               content::InvalidateTypes changed_flags) override;
   void LoadingStateChanged(content::WebContents* source,

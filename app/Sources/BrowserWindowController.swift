@@ -1160,6 +1160,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     func browserTabDidRequestClose(_ tab: BrowserTab) { close(tab) }
 
+    func browserTabDidRequestActivation(_ tab: BrowserTab) {
+        select(tab)
+        if window?.isMiniaturized == true { window?.deminiaturize(nil) }
+        showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     lazy var passwordOffers = PasswordOfferPresenter { [weak self] toast in self?.root.showToast(toast) }
 
     func browserTab(_ tab: BrowserTab, didOfferPassword offer: PasswordOffer) { passwordOffers.present(offer) }

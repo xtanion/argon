@@ -5,6 +5,7 @@ protocol BrowserTabObserver: AnyObject {
     func browserTabDidChange(_ tab: BrowserTab)
     func browserTab(_ tab: BrowserTab, didOpen newTab: Tab, disposition: TabOpenDisposition)
     func browserTabDidRequestClose(_ tab: BrowserTab)
+    func browserTabDidRequestActivation(_ tab: BrowserTab)
     func browserTab(_ tab: BrowserTab, didRequestFullscreen fullscreen: Bool)
     func browserTab(_ tab: BrowserTab, didUpdateFindMatches matches: Int, activeMatch: Int)
     func browserTabDidChangeMedia(_ tab: BrowserTab)
@@ -158,6 +159,8 @@ final class BrowserTab: NSObject, TabDelegate {
     }
 
     func tabDidRequestClose(_ tab: Tab) { observer?.browserTabDidRequestClose(self) }
+
+    func tabDidRequestActivation(_ tab: Tab) { observer?.browserTabDidRequestActivation(self) }
 
     func tabDidChangeMedia(_ tab: Tab) { observer?.browserTabDidChangeMedia(self) }
 

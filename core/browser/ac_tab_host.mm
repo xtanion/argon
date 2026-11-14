@@ -80,6 +80,7 @@
 - (void)hostFaviconChanged;
 - (void)hostFindMatches:(int)matches active:(int)active;
 - (void)hostRequestedClose;
+- (void)hostRequestedActivation;
 - (void)hostRequestedFullscreen:(BOOL)fullscreen;
 - (void)hostOpenedContents:(std::unique_ptr<content::WebContents>)contents
                disposition:(WindowOpenDisposition)disposition;
@@ -240,6 +241,10 @@ content::WebContents* ACTabHost::AddNewContents(
 
 void ACTabHost::CloseContents(content::WebContents* source) {
   [owner_ hostRequestedClose];
+}
+
+void ACTabHost::ActivateContents(content::WebContents* contents) {
+  [owner_ hostRequestedActivation];
 }
 
 void ACTabHost::NavigationStateChanged(content::WebContents* source,

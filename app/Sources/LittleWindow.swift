@@ -313,6 +313,12 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
 
     func browserTabDidRequestClose(_ tab: BrowserTab) { close() }
 
+    func browserTabDidRequestActivation(_ tab: BrowserTab) {
+        if window?.isMiniaturized == true { window?.deminiaturize(nil) }
+        showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func browserTab(_ tab: BrowserTab, didRequestFullscreen fullscreen: Bool) {
         guard let window, window.styleMask.contains(.fullScreen) != fullscreen else { return }
         window.toggleFullScreen(nil)

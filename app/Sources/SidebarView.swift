@@ -90,6 +90,7 @@ final class SidebarView: NSView {
         nowPlaying.sidebar = self
         nowPlaying.isHidden = true
         updateChip.onLayoutChange = { [weak self] in self?.needsLayout = true }
+        updateChip.onExpandChange = { [weak self] in self?.animateUpdateChip() }
         favoritesGrid.sidebar = self
         favoritesGrid.list = tabList
         spaceHeader.onToggle = { [weak self] in self?.controller?.togglePinnedSection() }
@@ -128,6 +129,23 @@ final class SidebarView: NSView {
         tabList.revealsClear = hovered
     }
 
+    private func updateChipFrame() -> NSRect {
+        let p = Metrics.padding
+        let height = updateChip.isHidden ? 0 : updateChip.displayHeight
+        return NSRect(x: p, y: spaceBar.frame.minY - height, width: bounds.width - 2 * p, height: height)
+    }
+
+    // The expanded card grows upward over the tab list instead of pushing it.
+    private func animateUpdateChip() {
+        let target = updateChipFrame()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Motion.reduced ? 0 : 0.22
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
+            context.allowsImplicitAnimation = true
+            updateChip.animator().frame = target
+        }
+    }
+
     override func layout() {
         super.layout()
         layer?.shadowPath = floatingTint == nil ? nil
@@ -148,8 +166,8 @@ final class SidebarView: NSView {
         spaceBar.frame = NSRect(x: 0, y: bounds.height - Metrics.spaceBarHeight, width: w, height: Metrics.spaceBarHeight)
         let clipTop = pill.frame.maxY
         let chipHeight = updateChip.isHidden ? 0 : UpdateChipView.height
-        updateChip.frame = NSRect(x: p, y: spaceBar.frame.minY - chipHeight, width: w - 2 * p, height: chipHeight)
-        let aboveChip = updateChip.isHidden ? spaceBar.frame.minY : updateChip.frame.minY - 6
+        updateChip.frame = updateChipFrame()
+        let aboveChip = updateChip.isHidden ? spaceBar.frame.minY : spaceBar.frame.minY - chipHeight - 6
         nowPlaying.frame = NSRect(x: p, y: aboveChip - NowPlayingView.expandedHeight, width: w - 2 * p, height: NowPlayingView.expandedHeight)
         let clipBottom = nowPlaying.tab == nil ? aboveChip : aboveChip - NowPlayingView.collapsedHeight - 6
         spaceClip.frame = NSRect(x: 0, y: clipTop, width: w, height: max(0, clipBottom - clipTop))

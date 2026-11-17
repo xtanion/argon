@@ -17,8 +17,8 @@
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "dots-light.svg",
-          "name" : "dots-light",
+          "image-name" : "ar-light.svg",
+          "name" : "ar-light",
           "opacity-specializations" : [
             {
               "value" : 1
@@ -35,8 +35,8 @@
         },
         {
           "glass" : false,
-          "image-name" : "dots-dark.svg",
-          "name" : "dots-dark",
+          "image-name" : "ar-dark.svg",
+          "name" : "ar-dark",
           "opacity-specializations" : [
             {
               "value" : 0

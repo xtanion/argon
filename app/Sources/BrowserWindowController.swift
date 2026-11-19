@@ -1203,6 +1203,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     func windowDidExitFullScreen(_ notification: Notification) {
         (window as? BrowserWindow)?.positionTrafficLights()
+        root.sidebar.needsLayout = true
         if root.contentFullscreen {
             root.contentFullscreen = false
             enteredFullscreenForContent = false
@@ -1211,6 +1212,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     func windowDidEnterFullScreen(_ notification: Notification) {
         (window as? BrowserWindow)?.positionTrafficLights()
+        root.sidebar.needsLayout = true
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {

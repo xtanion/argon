@@ -5,7 +5,9 @@ import AppKit
 final class BrowserWindow: NSWindow {
     private var buttonPitch: CGFloat?
 
+    // In full screen the traffic lights move to the system title bar, so nothing is reserved for them.
     var trafficLightsMaxX: CGFloat {
+        if styleMask.contains(.fullScreen) { return -2 }
         let width = standardWindowButton(.zoomButton)?.frame.width ?? 14
         return Metrics.trafficLightInset + 2 * (buttonPitch ?? 20) + width
     }
@@ -46,6 +48,11 @@ final class BrowserWindow: NSWindow {
         }
         super.sendEvent(event)
         if event.type == .otherMouseUp, [3, 4].contains(event.buttonNumber) { navigate(back: event.buttonNumber == 3) }
+    }
+
+    // Full screen adds AppKit's own title bar window as a child; only menus and popups we open count.
+    var hasPopupChildWindow: Bool {
+        (childWindows ?? []).contains { !NSStringFromClass(type(of: $0)).contains("FullScreen") }
     }
 
     private func navigate(back: Bool) {
@@ -495,7 +502,7 @@ final class RootView: NSView {
             MainActor.assumeIsolated {
                 guard let self, self.sidebarPeeking else { return }
                 if self.peekTracker.containsMouse { return }
-                if let window = self.window, window.attachedSheet != nil || !(window.childWindows ?? []).isEmpty {
+                if let window = self.window as? BrowserWindow, window.attachedSheet != nil || window.hasPopupChildWindow {
                     self.schedulePeekHide()
                     return
                 }

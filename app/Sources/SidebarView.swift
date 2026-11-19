@@ -2491,7 +2491,7 @@ final class DownloadGlyph: NSView {
         CATransaction.setDisableActions(true)
         let c = CGPoint(x: bounds.midX, y: bounds.midY)
         let arrowPath = CGMutablePath()
-        arrowPath.move(to: CGPoint(x: c.x, y: c.y - 4.8))
+        arrowPath.move(to: CGPoint(x: c.x, y: c.y - 6.2))
         arrowPath.addLine(to: CGPoint(x: c.x, y: c.y + 1.6))
         arrowPath.move(to: CGPoint(x: c.x - 3.2, y: c.y - 1.6))
         arrowPath.addLine(to: CGPoint(x: c.x, y: c.y + 1.6))

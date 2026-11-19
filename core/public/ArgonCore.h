@@ -9,6 +9,7 @@
 #import "ACAutocomplete.h"
 #import "ACDownload.h"
 #import "ACExtensionTabs.h"
+#import "ACImport.h"
 #import "ACMain.h"
 #import "ACProfile.h"
 #import "ACTab.h"

@@ -570,6 +570,13 @@ final class DownloadCenter: NSObject, ProfileDownloadDelegate {
         return CGFloat(Double(received) / Double(max(total, 1)))
     }
 
+    func untrack(_ profile: Profile) {
+        guard profiles.removeValue(forKey: ObjectIdentifier(profile)) != nil else { return }
+        if profile.downloadDelegate === self { profile.downloadDelegate = nil }
+        rebuild()
+        post(.changed)
+    }
+
     func track(_ profile: Profile) {
         let key = ObjectIdentifier(profile)
         guard profiles[key] == nil else { return }

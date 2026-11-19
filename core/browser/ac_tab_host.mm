@@ -12,6 +12,8 @@
 
 #include "base/functional/bind.h"
 #include "base/no_destructor.h"
+#include "components/performance_manager/embedder/performance_manager_registry.h"
+#include "components/performance_manager/public/graph/page_node.h"
 #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
 #include "chrome/browser/devtools/devtools_toggle_action.h"
 #include "chrome/browser/devtools/devtools_window.h"
@@ -109,6 +111,12 @@ ACTabHost::ACTabHost(ACTab* owner,
   contents_->SetDelegate(this);
   ChromeDevToolsManagerDelegate::MarkAsEmbedderTab(contents_.get());
   TabHelpers::AttachTabHelpers(contents_.get(), /*enable_browser_autofill=*/true);
+  // Discarding in place requires the page to be known as a tab, which Chrome
+  // otherwise only does when a page joins its tab strip.
+  if (auto* registry =
+          performance_manager::PerformanceManagerRegistry::GetInstance()) {
+    registry->SetPageType(contents_.get(), performance_manager::PageType::kTab);
+  }
   Profile* profile =
       Profile::FromBrowserContext(contents_->GetBrowserContext());
   if (!autofill::AutofillClientProviderFactory::GetForProfile(profile)

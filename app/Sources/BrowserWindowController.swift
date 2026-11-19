@@ -44,9 +44,73 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             MainActor.assumeIsolated { BrowserWindowController.current?.archiveIdleTabs() }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in self?.archiveIdleTabs() }
+        TabSleep.shared.start(controller: self)
     }
 
     private var archiveTimer: Timer?
+    private var profileLoads: [String: [@MainActor (Profile) -> Void]] = [:]
+
+    // MARK: Profiles
+
+    // Spaces load their profile the first time they are shown, so launch only
+    // pays for the active one. Spaces sharing a profile share the load.
+    func withProfile(of space: Space, _ body: @escaping @MainActor (Profile) -> Void) {
+        if let profile = space.profile {
+            body(profile)
+            return
+        }
+        let identifier = space.profileIdentifier
+        if profileLoads[identifier] != nil {
+            profileLoads[identifier]?.append(body)
+            return
+        }
+        profileLoads[identifier] = [body]
+        Application.shared.loadProfile(identifier: identifier) { [weak self] profile in
+            guard let self else { return }
+            let waiting = self.profileLoads.removeValue(forKey: identifier) ?? []
+            guard let profile else { return }
+            for other in self.spaces where other.profileIdentifier == identifier { other.profile = profile }
+            Application.shared.extensionWindowsDidChange()
+            waiting.forEach { $0(profile) }
+        }
+    }
+
+    // Closes what is left of the profile's pages, keeping their addresses, and
+    // lets Chromium unload it. The spaces load it again when next shown.
+    func unloadProfile(_ identifier: String) {
+        let group = spaces.filter { $0.profileIdentifier == identifier }
+        guard let profile = group.lazy.compactMap(\.profile).first,
+              !group.contains(where: { $0 === activeSpace }) else { return }
+        detach(profile)
+        profile.unload()
+    }
+
+    func profileWillUnload(_ profile: Profile) {
+        guard spaces.contains(where: { $0.profile === profile }) else { return }
+        let wasActive = activeSpace.profile === profile
+        if wasActive {
+            displayedTab?.tab?.isVisible = false
+            displayedTab = nil
+        }
+        detach(profile)
+        if wasActive { showActiveTab() }
+    }
+
+    private func detach(_ profile: Profile) {
+        for space in spaces where space.profile === profile {
+            for tab in space.allTabs where tab.tab?.profile === profile { tab.suspend() }
+            space.profile = nil
+        }
+        DownloadCenter.shared.untrack(profile)
+        Application.shared.extensionWindowsDidChange()
+        refreshSidebar()
+    }
+
+    // Hovering a tab that is not running warms up its server connection.
+    func warmUp(_ tab: BrowserTab) {
+        guard tab.tab == nil || tab.tab?.isDiscarded == true, let url = tab.pinnedURL ?? tab.url else { return }
+        (tab.tab?.profile ?? activeSpace.profile)?.preconnect(to: url)
+    }
 
     // MARK: Auto-archive
 
@@ -196,7 +260,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             displayedTab = tab
             exitAutoPictureInPicture(returningTo: tab)
         }
-        guard let tab, let profile = activeSpace.profile else {
+        guard let profile = activeSpace.profile else {
+            root.card.show(nil)
+            sidebar.updateToolbar(for: nil)
+            let space = activeSpace
+            withProfile(of: space) { [weak self] _ in
+                guard let self, self.activeSpace === space else { return }
+                self.showActiveTab()
+                self.refreshSidebar()
+            }
+            return
+        }
+        guard let tab else {
             root.card.show(nil)
             sidebar.updateToolbar(for: nil)
             return
@@ -357,6 +432,37 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             self.selectSpace(self.spaces.count - 1)
             completion?(space)
         }
+    }
+
+    // Spaces whose id is already present are skipped, so importing twice does not duplicate them.
+    func addImportedSpaces(_ imported: [Space], favorites: [String: [BrowserTab]], completion: @escaping @MainActor (Int) -> Void) {
+        let existing = Set(spaces.map(\.id))
+        let fresh = imported.filter { !existing.contains($0.id) }
+        func load(_ index: Int) {
+            guard index < fresh.count else {
+                for (profile, tabs) in favorites {
+                    let known = Set(FavoritesStore.shared[profile].compactMap { ($0.pinnedURL ?? $0.url)?.absoluteString })
+                    let added = tabs.filter { tab in tab.pinnedURL.map { !known.contains($0.absoluteString) } ?? false }
+                    added.forEach { $0.observer = self }
+                    FavoritesStore.shared[profile] += added
+                }
+                let added = fresh.filter { $0.profile != nil }
+                for space in added {
+                    for tab in space.allTabs { tab.observer = self }
+                    spaces.append(space)
+                }
+                Application.shared.extensionWindowsDidChange()
+                refreshSidebar()
+                scheduleSave()
+                completion(added.count)
+                return
+            }
+            Application.shared.loadProfile(identifier: fresh[index].profileIdentifier) { profile in
+                fresh[index].profile = profile
+                load(index + 1)
+            }
+        }
+        load(0)
     }
 
     func setName(_ name: String, forSpace index: Int) {

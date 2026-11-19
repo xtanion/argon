@@ -30,6 +30,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
     private var inlineAllowed = true
     private var defaultCompletion = ""
     private var autocompleteStorage: Autocomplete?
+    private var preconnectTask: Task<Void, Never>?
+    private var preconnectedHost: String?
     private var favicons: [String: NSImage] = [:]
     private var pendingFavicons: Set<String> = []
 
@@ -336,6 +338,27 @@ final class CommandBarView: NSView, NSTextFieldDelegate {
 
     private func updateSelection() {
         for (index, row) in rows.enumerated() { row.isSelected = index == selected }
+        schedulePreconnect()
+    }
+
+    // Warms up the connection to the highlighted destination once typing pauses,
+    // like Chrome's omnibox does for its default match.
+    private func schedulePreconnect() {
+        preconnectTask?.cancel()
+        guard suggestions.indices.contains(selected) else { return }
+        let url: URL?
+        switch suggestions[selected] {
+        case .open(let target, _, _, _): url = target
+        case .match(let match, _): url = match.destinationURL
+        case .switchTo: url = nil
+        }
+        guard let url, let host = url.host, host != preconnectedHost else { return }
+        preconnectTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled, let self else { return }
+            self.preconnectedHost = host
+            self.profile?.preconnect(to: url)
+        }
     }
 
     private func execute(_ index: Int) {

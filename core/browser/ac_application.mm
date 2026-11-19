@@ -192,6 +192,18 @@ void InterceptOpenURLs() {
   return wrapper;
 }
 
+- (void)profileWillUnload:(ACProfile*)wrapper native:(Profile*)profile {
+  auto it = _profiles.find(profile);
+  if (it != _profiles.end() && it->second == wrapper) {
+    _profiles.erase(it);
+  }
+  if ([g_delegate respondsToSelector:@selector(application:
+                                                profileWillUnload:)]) {
+    [g_delegate application:self profileWillUnload:wrapper];
+  }
+  [wrapper profileWillBeDestroyed];
+}
+
 - (ACProfile*)defaultProfile {
   Profile* profile = ProfileManager::GetLastUsedProfile();
   CHECK(profile);
@@ -216,9 +228,10 @@ void InterceptOpenURLs() {
   manager->CreateProfileAsync(
       path, base::BindOnce(^(Profile* profile) {
         ACApplication* strongSelf = weakSelf;
-        completion(strongSelf && profile
-                       ? [strongSelf wrapperForProfile:profile]
-                       : nil);
+        ACProfile* wrapper =
+            strongSelf && profile ? [strongSelf wrapperForProfile:profile] : nil;
+        [wrapper acquireKeepAlive];
+        completion(wrapper);
       }));
 }
 

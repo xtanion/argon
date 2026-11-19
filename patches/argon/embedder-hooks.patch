@@ -113,7 +113,7 @@ diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
 index 37c881f5d2..886c48ca28 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -19,3 +19,21 @@
+@@ -19,3 +19,27 @@
  _ChromeAppModeStart_v8
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
@@ -124,6 +124,9 @@ index 37c881f5d2..886c48ca28 100644
 +_OBJC_CLASS_$_ACAutocompleteMatch
 +_OBJC_CLASS_$_ACDownload
 +_OBJC_CLASS_$_ACExtensionWindow
++_OBJC_CLASS_$_ACImportedCookie
++_OBJC_CLASS_$_ACImportedLogin
++_OBJC_CLASS_$_ACImportedVisit
 +_OBJC_CLASS_$_ACPasswordOffer
 +_OBJC_CLASS_$_ACProfile
 +_OBJC_CLASS_$_ACTab
@@ -132,6 +135,9 @@ index 37c881f5d2..886c48ca28 100644
 +_OBJC_METACLASS_$_ACAutocompleteMatch
 +_OBJC_METACLASS_$_ACDownload
 +_OBJC_METACLASS_$_ACExtensionWindow
++_OBJC_METACLASS_$_ACImportedCookie
++_OBJC_METACLASS_$_ACImportedLogin
++_OBJC_METACLASS_$_ACImportedVisit
 +_OBJC_METACLASS_$_ACPasswordOffer
 +_OBJC_METACLASS_$_ACProfile
 +_OBJC_METACLASS_$_ACTab
@@ -139,7 +145,7 @@ diff --git a/chrome/app/framework.order b/chrome/app/framework.order
 index 6dbc3aeff3..86d0b75be5 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -31,3 +31,22 @@ _ChromeWebAppShortcutCopierMain
+@@ -31,3 +31,28 @@ _ChromeWebAppShortcutCopierMain
  
  # _ChromeMain must be listed last.  That's the whole point of this file.
  _ChromeMain
@@ -156,6 +162,12 @@ index 6dbc3aeff3..86d0b75be5 100644
 +_OBJC_METACLASS_$_ACDownload
 +_OBJC_CLASS_$_ACExtensionWindow
 +_OBJC_METACLASS_$_ACExtensionWindow
++_OBJC_CLASS_$_ACImportedCookie
++_OBJC_METACLASS_$_ACImportedCookie
++_OBJC_CLASS_$_ACImportedLogin
++_OBJC_METACLASS_$_ACImportedLogin
++_OBJC_CLASS_$_ACImportedVisit
++_OBJC_METACLASS_$_ACImportedVisit
 +_OBJC_CLASS_$_ACPasswordOffer
 +_OBJC_METACLASS_$_ACPasswordOffer
 +_OBJC_CLASS_$_ACProfile

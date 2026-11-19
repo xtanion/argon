@@ -31,6 +31,17 @@ enum Preferences {
         archiveAfterHours > 0 ? TimeInterval(archiveAfterHours) * 60 * 60 : nil
     }
 
+    static let sleepChoices: [(minutes: Int, title: String)] = [(15, "15 Minutes"), (30, "30 Minutes"), (60, "1 Hour"), (120, "2 Hours"), (0, "Never")]
+
+    static var sleepTabsAfterMinutes: Int {
+        get { UserDefaults.standard.object(forKey: "ArgonSleepTabsAfterMinutes") as? Int ?? 30 }
+        set { UserDefaults.standard.set(newValue, forKey: "ArgonSleepTabsAfterMinutes") }
+    }
+
+    static var sleepTabsAfter: TimeInterval? {
+        sleepTabsAfterMinutes > 0 ? TimeInterval(sleepTabsAfterMinutes) * 60 : nil
+    }
+
     static var sidebarOnRight: Bool {
         get { UserDefaults.standard.bool(forKey: sidebarOnRightKey) }
         set {
@@ -38,6 +49,11 @@ enum Preferences {
             UserDefaults.standard.set(newValue, forKey: sidebarOnRightKey)
             NotificationCenter.default.post(name: .sidebarSideDidChange, object: nil)
         }
+    }
+
+    static var appIcon: AppIconStyle {
+        get { UserDefaults.standard.string(forKey: "ArgonAppIcon").flatMap(AppIconStyle.init(rawValue:)) ?? .blue }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "ArgonAppIcon") }
     }
 
     static var checkForUpdates: Bool {

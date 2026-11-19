@@ -12,6 +12,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class ACApplication;
+@class ACProfile;
 
 NS_SWIFT_UI_ACTOR
 NS_SWIFT_NAME(ApplicationDelegate)
@@ -27,6 +28,10 @@ NS_SWIFT_NAME(ApplicationDelegate)
 // dropped on the Dock icon. Links that arrive during startup are delivered
 // right after applicationDidStart:.
 - (void)application:(ACApplication*)application openURLs:(NSArray<NSURL*>*)urls;
+// Chromium is about to destroy `profile`, after -[ACProfile unload] or for its
+// own reasons. Drop every reference to it.
+- (void)application:(ACApplication*)application
+    profileWillUnload:(ACProfile*)profile;
 @end
 
 // Starts Chromium in the browser process and runs the main loop. Returns the

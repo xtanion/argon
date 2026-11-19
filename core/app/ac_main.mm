@@ -4,12 +4,84 @@
 
 #import "argon_core/public/ACMain.h"
 
+#include <string>
 #include <vector>
 
 #include "base/time/time.h"
 #include "chrome/app/chrome_main.h"
 #include "argon_core/app/ac_main_delegate.h"
 #include "argon_core/browser/ac_internal.h"
+
+namespace {
+
+// Argon ships no AI features: no Gemini, no on-device model download, and no
+// built-in AI web APIs for pages.
+constexpr const char* kDisabledAIFeatures[] = {
+    "Glic",
+    "ApiGlicPrivate",
+    "ApiContextualTasksPrivate",
+    "PreemptiveSodaDownload",
+    "GlicRollout",
+    "GlicActor",
+    "GlicTieredRollout",
+    "GlicTieredRolloutV2",
+    "GlicWarming",
+    "GlicWebContentsWarming",
+    "GlicContextMenu",
+    "GlicTextSelectionContextMenu",
+    "GlicExtensions",
+    "PasswordChangeWithGlic",
+    "Compose",
+    "ComposeEligible",
+    "ComposeGraduated",
+    "NtpComposebox",
+    "AimEnabled",
+    "AimServerEligibilityEnabled",
+    "AimServerRequestOnStartupEnabled",
+    "AiOverlayDialog",
+    "LensOverlay",
+    "LensOverlayContextualSearchbox",
+    "LensOverlayTextSelectionContextMenuEntrypoint",
+    "LensOverlayImageContextMenuActions",
+    "LensAimSuggestions",
+    "ContextualCueing",
+    "ContextualCueingV2",
+    "ContextualTasks",
+    "ContextualTasksContextMenu",
+    "SkillsEnabled",
+    "HistoryEmbeddings",
+    "HistoryEmbeddingsAnswers",
+    "PassageEmbedder",
+    "CustomizeChromeWallpaperSearch",
+    "OrganizerPanel",
+    "AutofillAiShipment",
+    "AutofillAiUsePrivateAi",
+    "PermissionsAIv4",
+    "PermissionsAIP92",
+    "OptimizationGuideModelExecution",
+    "OnDeviceModelBackgroundDownload",
+    "OnDeviceWebSpeechGeminiNano",
+    "AIApiFoundationalModel",
+    "AIPromptAPI",
+    "AISummarizationAPI",
+    "AIWriterAPI",
+    "AIRewriterAPI",
+    "AIProofreadingAPI",
+    "DevToolsConsoleInsights",
+    "DevToolsFreestyler",
+    "DevToolsAiCodeCompletion",
+    "DevToolsAiCodeGeneration",
+    "DevToolsAiGeneratedTimelineLabels",
+    "DevToolsGlobalAiButton",
+};
+
+constexpr char kDisabledAIWebAPIs[] =
+    "AIPromptAPI,AIPromptAPIForWorkers,AISummarizationAPI,"
+    "AISummarizationAPIForWorkers,AIWriterAPI,AIWriterAPIForWorkers,"
+    "AIRewriterAPI,AIRewriterAPIForWorkers,AIProofreaderAPI,"
+    "AIProofreadingAPI,AIEmbeddingsAPI,AIDecisionModelAPI";
+
+}  // namespace
 
 int ACMain(int argc, char** argv, id<ACApplicationDelegate> delegate) {
   argon_core::SetApplicationDelegate(delegate);
@@ -22,8 +94,21 @@ int ACMain(int argc, char** argv, id<ACApplicationDelegate> delegate) {
   std::vector<const char*> args(argv, argv + argc);
   args.push_back("--no-startup-window");
   args.push_back("--argon-embedder");
-  // Dev builds apply fieldtrial_testing_config, which enables this and adds a menu bar icon.
-  args.push_back("--disable-features=OmniboxEverywhere");
+  // Chromium builds, release included, apply fieldtrial_testing_config: about a
+  // thousand experiments, among them Gemini, Contextual Tasks, dictation, an
+  // unprompted Live Caption download and OmniboxEverywhere's menu bar icon.
+  args.push_back("--disable-field-trial-config");
+  std::string disabled = "OmniboxEverywhere";
+  for (const char* feature : kDisabledAIFeatures) {
+    disabled.append(",").append(feature);
+  }
+  disabled = "--disable-features=" + disabled;
+  std::string blink_disabled =
+      std::string("--disable-blink-features=") + kDisabledAIWebAPIs;
+  args.push_back(disabled.c_str());
+  // Tab sleep discards pages in place; off by default outside Android.
+  args.push_back("--enable-features=WebContentsDiscard");
+  args.push_back(blink_disabled.c_str());
   args.push_back(nullptr);
 
   return ChromeMainWithDelegate(static_cast<int>(args.size() - 1), args.data(),

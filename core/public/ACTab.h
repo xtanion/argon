@@ -100,6 +100,19 @@ NS_SWIFT_NAME(Tab)
 // Hidden tabs stop painting and are cheaper to keep around.
 @property(getter=isVisible) BOOL visible;
 
+// A frozen page stays in memory but runs no tasks. Only applies while the tab
+// is hidden; showing the tab unfreezes it.
+@property(getter=isFrozen) BOOL frozen;
+// Drops the page and its renderer but keeps the tab, its URL and its back and
+// forward history. Showing the tab reloads it.
+- (void)discard;
+@property(readonly, getter=isDiscarded) BOOL discarded;
+// Capturing the camera, microphone, screen or a tab, or connected to a
+// Bluetooth, USB, HID or serial device.
+@property(readonly, getter=isCapturing) BOOL capturing;
+// The page has had form input or edited content.
+@property(readonly) BOOL hasUserEdits;
+
 - (void)loadURL:(NSURL*)url NS_SWIFT_NAME(load(_:));
 - (void)goBack;
 - (void)goForward;

@@ -50,6 +50,15 @@ NS_SWIFT_NAME(Profile)
 - (nullable NSURL*)searchURLForQuery:(NSString*)query
     NS_SWIFT_NAME(searchURL(for:));
 
+// Starts DNS, TCP and TLS setup for `url`'s server ahead of a likely
+// navigation, the way Chrome's address bar does for its top suggestion.
+- (void)preconnectToURL:(NSURL*)url NS_SWIFT_NAME(preconnect(to:));
+
+// Lets Chromium unload the profile once nothing else keeps it alive. Drop every
+// reference to the receiver afterwards and load the profile again by
+// identifier when it is next needed.
+- (void)unload;
+
 - (instancetype)init NS_UNAVAILABLE;
 
 @end

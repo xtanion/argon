@@ -156,7 +156,7 @@ final class ShortcutsSettingsPane: SettingsPane, NSSearchFieldDelegate {
             card.topAnchor.constraint(equalTo: view.topAnchor, constant: contentInset),
             card.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: contentInset),
             card.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -contentInset),
-            card.widthAnchor.constraint(equalToConstant: 380),
+            card.widthAnchor.constraint(equalToConstant: 352),
             searchField.topAnchor.constraint(equalTo: card.topAnchor, constant: 10),
             searchField.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 10),
             searchField.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -10),
@@ -177,7 +177,7 @@ final class ShortcutsSettingsPane: SettingsPane, NSSearchFieldDelegate {
             stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
             detail.topAnchor.constraint(equalTo: card.topAnchor),
-            detail.leadingAnchor.constraint(equalTo: card.trailingAnchor, constant: 24),
+            detail.leadingAnchor.constraint(equalTo: card.trailingAnchor, constant: 20),
             detail.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -contentInset),
             detail.bottomAnchor.constraint(equalTo: card.bottomAnchor),
         ])
@@ -342,7 +342,7 @@ final class ShortcutDetailView: NSView {
             "To change a shortcut, add it for Argon in System Settings \u{203A} Keyboard \u{203A} Keyboard Shortcuts \u{203A} App Shortcuts, using the exact menu name.")
         note.font = SettingsStyle.subtitle
         note.textColor = .secondaryLabelColor
-        let open = SettingsButton("Open Keyboard Settings\u{2026}") {
+        let open = SettingsButton("Keyboard Settings\u{2026}") {
             if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
                 NSWorkspace.shared.open(url)
             }
@@ -359,6 +359,7 @@ final class ShortcutDetailView: NSView {
             menuLabel.widthAnchor.constraint(equalTo: widthAnchor),
             alsoLabel.widthAnchor.constraint(equalTo: widthAnchor),
             open.leadingAnchor.constraint(equalTo: leadingAnchor),
+            open.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
             open.bottomAnchor.constraint(equalTo: bottomAnchor),
             note.leadingAnchor.constraint(equalTo: leadingAnchor),
             note.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -462,6 +463,10 @@ final class KeycapView: NSView {
             label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 8),
             label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
         ])
+        let snug = widthAnchor.constraint(equalTo: label.widthAnchor, constant: 16)
+        snug.priority = .defaultHigh
+        snug.isActive = true
+        setContentHuggingPriority(.required, for: .horizontal)
     }
 
     @available(*, unavailable)

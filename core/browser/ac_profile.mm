@@ -7,9 +7,13 @@
 #include <memory>
 
 #include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/download/download_core_service_factory.h"
+#include "chrome/browser/predictors/loading_predictor.h"
+#include "chrome/browser/predictors/loading_predictor_factory.h"
+#include "chrome/browser/profiles/profile_observer.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile.h"
@@ -21,6 +25,7 @@
 #include "content/public/browser/download_manager.h"
 #include "content/public/browser/web_contents.h"
 #include "net/base/apple/url_conversions.h"
+#include "services/network/public/cpp/constants.h"
 
 @interface ACProfile ()
 - (void)downloadAdded:(download::DownloadItem*)item;
@@ -57,12 +62,32 @@ class DownloadObserver : public download::AllDownloadItemNotifier::Observer {
   download::AllDownloadItemNotifier notifier_;
 };
 
+class DestructionObserver : public ProfileObserver {
+ public:
+  DestructionObserver(ACProfile* owner, Profile* profile) : owner_(owner) {
+    observation_.Observe(profile);
+  }
+
+  void OnProfileWillBeDestroyed(Profile* profile) override {
+    observation_.Reset();
+    ACProfile* owner = owner_;
+    if (owner) {
+      [ACApplication.sharedApplication profileWillUnload:owner native:profile];
+    }
+  }
+
+ private:
+  __weak ACProfile* owner_;
+  base::ScopedObservation<Profile, ProfileObserver> observation_{this};
+};
+
 }  // namespace
 
 @implementation ACProfile {
   raw_ptr<Profile> _profile;
   std::unique_ptr<ScopedProfileKeepAlive> _keepAlive;
   std::unique_ptr<DownloadObserver> _downloadObserver;
+  std::unique_ptr<DestructionObserver> _destructionObserver;
   NSMutableArray<ACDownload*>* _downloads;
   NSMutableDictionary<NSString*, ACDownload*>* _downloadsByGuid;
 }
@@ -77,14 +102,51 @@ class DownloadObserver : public download::AllDownloadItemNotifier::Observer {
       _keepAlive = std::make_unique<ScopedProfileKeepAlive>(
           profile, ProfileKeepAliveOrigin::kBrowserWindow);
     }
+    _destructionObserver =
+        std::make_unique<DestructionObserver>(self, profile);
   }
   return self;
 }
 
 - (void)profileWillBeDestroyed {
   _downloadObserver.reset();
+  _destructionObserver.reset();
   _keepAlive.reset();
   _profile = nullptr;
+}
+
+// A profile handed back by loadProfile after -unload is still alive until its
+// last keep-alive goes, so loading it again has to take one back.
+- (void)acquireKeepAlive {
+  if (_keepAlive || !_profile || _profile->IsOffTheRecord()) {
+    return;
+  }
+  _keepAlive = ScopedProfileKeepAlive::TryAcquire(
+      _profile, ProfileKeepAliveOrigin::kBrowserWindow);
+}
+
+- (void)unload {
+  _downloadObserver.reset();
+  _downloads = nil;
+  _downloadsByGuid = nil;
+  _keepAlive.reset();
+}
+
+- (void)preconnectToURL:(NSURL*)url {
+  if (!_profile) {
+    return;
+  }
+  GURL gurl = net::GURLWithNSURL(url);
+  if (!gurl.is_valid() || !gurl.SchemeIsHTTPOrHTTPS()) {
+    return;
+  }
+  if (predictors::LoadingPredictor* predictor =
+          predictors::LoadingPredictorFactory::GetForProfile(_profile)) {
+    predictor->PrepareForPageLoad(std::nullopt, gurl,
+                                  predictors::HintOrigin::OMNIBOX,
+                                  network::GetNoOpNetworkRestrictionsId(),
+                                  /*preconnectable=*/true);
+  }
 }
 
 - (Profile*)nativeProfile {

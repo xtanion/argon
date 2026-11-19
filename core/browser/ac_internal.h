@@ -48,12 +48,14 @@ void CloseAllTabs();
 - (instancetype)initPrivate NS_DESIGNATED_INITIALIZER;
 - (void)startUp;
 - (void)shutDown;
+- (void)profileWillUnload:(ACProfile*)wrapper native:(Profile*)profile;
 @end
 
 @interface ACProfile ()
 @property(readonly) Profile* nativeProfile;
 - (instancetype)initWithProfile:(Profile*)profile NS_DESIGNATED_INITIALIZER;
 - (void)profileWillBeDestroyed;
+- (void)acquireKeepAlive;
 @end
 
 namespace download {

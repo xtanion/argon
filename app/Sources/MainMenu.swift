@@ -29,6 +29,8 @@ enum MainMenu {
                 .keyEquivalentModifierMask = [.command, .option]
             menu.addItem(withTitle: "Open Location...", action: #selector(BrowserWindowController.openLocation(_:)), keyEquivalent: "l")
             menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem("Import from Another Browser...") { SettingsWindowController.shared.show(.importing) })
+            menu.addItem(.separator())
             menu.addItem(withTitle: "Close Tab", action: #selector(BrowserWindowController.closeTab(_:)), keyEquivalent: "w")
             menu.addItem(withTitle: "Reopen Closed Tab", action: #selector(BrowserWindowController.reopenClosedTab(_:)), keyEquivalent: "t")
                 .keyEquivalentModifierMask = [.command, .shift]

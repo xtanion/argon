@@ -1,6 +1,6 @@
 import AppKit
 
-let contentInset: CGFloat = 24
+let contentInset: CGFloat = 16
 
 // MARK: General
 
@@ -10,6 +10,10 @@ final class GeneralSettingsPane: SettingsPane {
     private let folderPopUp = SettingsPopUp { _ in }
     private let sidebarSidePopUp = SettingsPopUp { item in Preferences.sidebarOnRight = item.tag == 1 }
     private let framelessSwitch = SettingsSwitch(isOn: Preferences.frameless) { Preferences.frameless = $0 }
+    private let sleepPopUp = SettingsPopUp { item in
+        Preferences.sleepTabsAfterMinutes = item.tag
+        TabSleep.shared.run()
+    }
     private let archivePopUp = SettingsPopUp { item in
         Preferences.archiveAfterHours = item.tag
         BrowserWindowController.current?.archiveIdleTabs()
@@ -31,16 +35,12 @@ final class GeneralSettingsPane: SettingsPane {
 
         let quitting = SettingsCard([
             SettingsRow(title: "Warn before quitting", subtitle: "Press \u{2318}Q twice to quit Argon.",
-                        badge: SettingsStyle.badge("power", color: .systemRed),
                         accessory: SettingsSwitch(isOn: Preferences.warnBeforeQuitting) { Preferences.warnBeforeQuitting = $0 }),
             SettingsRow(title: "Show sidebar on launch", subtitle: "Turn off to start with the sidebar hidden.",
-                        badge: SettingsStyle.badge("sidebar.left", color: .systemBlue),
                         accessory: SettingsSwitch(isOn: Preferences.showSidebarOnLaunch) { Preferences.showSidebarOnLaunch = $0 }),
             SettingsRow(title: "Sidebar position", subtitle: "Show the sidebar on the left or right side of the window.",
-                        badge: SettingsStyle.badge("sidebar.right", color: .systemIndigo),
                         accessory: sidebarSidePopUp),
             SettingsRow(title: "Frameless window", subtitle: "The page runs to the window's edges, with no border on the three sides away from the sidebar.",
-                        badge: SettingsStyle.badge("rectangle.leadinghalf.inset.filled", color: .systemTeal),
                         accessory: framelessSwitch),
         ])
         for (tag, title) in ["Left", "Right"].enumerated() {
@@ -53,10 +53,16 @@ final class GeneralSettingsPane: SettingsPane {
         NotificationCenter.default.addObserver(self, selector: #selector(syncFrameless), name: .framelessDidChange, object: nil)
 
         let archive = SettingsCard([
+            SettingsRow(title: "Sleep tabs after", subtitle: "Tabs you haven't looked at in this long free their memory and reload when you open them. Tabs playing media, sharing your camera or screen, or holding form input stay awake.",
+                        accessory: sleepPopUp, wraps: true),
             SettingsRow(title: "Archive tabs after", subtitle: "Unpinned tabs you haven't looked at in this long are archived. Find them under History \u{2192} Archived Tabs or search for them in the command bar.",
-                        badge: SettingsStyle.badge("archivebox.fill", color: .systemOrange),
                         accessory: archivePopUp, wraps: true),
         ])
+        for choice in Preferences.sleepChoices {
+            sleepPopUp.addItem(withTitle: choice.title)
+            sleepPopUp.lastItem?.tag = choice.minutes
+        }
+        sleepPopUp.selectItem(withTag: Preferences.sleepTabsAfterMinutes)
         for choice in Preferences.archiveChoices {
             archivePopUp.addItem(withTitle: choice.title)
             archivePopUp.lastItem?.tag = choice.hours
@@ -66,31 +72,29 @@ final class GeneralSettingsPane: SettingsPane {
         let media = SettingsCard([
             SettingsRow(title: "Automatic Picture in Picture",
                         subtitle: "Videos keep playing in a floating window when you switch tabs or Spaces. Turn it off for one site from its site controls.",
-                        badge: SettingsStyle.badge("pip.fill", color: .systemPink),
                         accessory: SettingsSwitch(isOn: Preferences.autoPictureInPicture) { Preferences.autoPictureInPicture = $0 },
                         wraps: true),
         ])
 
         folderPopUp.onSelect = { [weak self] item in self?.folderChosen(item) }
         let capture = SettingsCard([
-            SettingsRow(title: "Save screenshots to", subtitle: "Used by Capture Page when you save the image.",
-                        badge: SettingsStyle.badge("camera.viewfinder", color: .systemPurple), accessory: folderPopUp),
+            SettingsRow(title: "Save screenshots to", subtitle: "Used by Capture Page when you save the image.", accessory: folderPopUp),
         ])
 
         let updates = SettingsCard([
             SettingsRow(title: "Check for updates automatically", subtitle: "Argon looks for new releases on GitHub every few hours.",
-                        badge: SettingsStyle.badge("arrow.down.circle.fill", color: .systemTeal),
                         accessory: SettingsSwitch(isOn: Preferences.checkForUpdates) { Preferences.checkForUpdates = $0 }),
         ])
 
+        let appIcon = AppIconBanner()
+
         let profile = SettingsCard([
             SettingsRow(title: "Search engine, passwords, site settings and downloads are set per profile.",
-                        badge: SettingsStyle.badge("person.crop.circle.fill", color: .systemGreen),
                         accessory: SettingsButton("Spaces and Profiles\u{2026}") { SettingsWindowController.shared.select(.spaces) },
                         wraps: true),
         ])
 
-        let column = NSStackView.settingsColumn([chip, quitting, archive, updates, media, capture, profile])
+        let column = NSStackView.settingsColumn([chip, appIcon, quitting, archive, updates, media, capture, profile])
         column.setCustomSpacing(20, after: chip)
         view.pinScrolling(column, width: SettingsStyle.width, top: contentInset, footer: makeFooter())
     }
@@ -383,7 +387,15 @@ final class SpacesSettingsPane: SettingsPane, NSTextFieldDelegate {
             ? "Only this Space uses it."
             : "Shared with " + ListFormatter.localizedString(byJoining: others.map(\.name)) + "."
         profileRow.subtitleLabel.isHidden = false
-        searchRow.subtitleLabel.stringValue = space.profile?.searchEngineName ?? "Unknown"
+        if let profile = space.profile {
+            searchRow.subtitleLabel.stringValue = profile.searchEngineName ?? "Unknown"
+        } else {
+            searchRow.subtitleLabel.stringValue = "Loading\u{2026}"
+            browser?.withProfile(of: space) { [weak self, weak space] profile in
+                guard let self, let space, self.selectedSpace === space else { return }
+                self.searchRow.subtitleLabel.stringValue = profile.searchEngineName ?? "Unknown"
+            }
+        }
         searchRow.subtitleLabel.isHidden = false
         removeButton.isEnabled = (browser?.spaces.count ?? 0) > 1
     }
@@ -537,13 +549,10 @@ final class LinksSettingsPane: SettingsPane, NSTextFieldDelegate {
         let little = SettingsCard([
             SettingsRow(title: "Open Little Argon when I press \u{2325}\u{2318}N in any app",
                         subtitle: "Little Argon is a small window for quick lookups. Move it into a Space with \u{2318}O.",
-                        badge: SettingsStyle.badge("macwindow", color: .systemBlue),
                         accessory: hotKeySwitch, wraps: true),
             SettingsRow(title: "Open Little Argon when clicking links with \u{2325}\u{2318} held",
-                        badge: SettingsStyle.badge("cursorarrow.click", color: .systemIndigo),
                         accessory: modifierClickSwitch),
             SettingsRow(title: "Links from other apps open in Little Argon",
-                        badge: SettingsStyle.badge("arrow.up.forward.app", color: .systemTeal),
                         accessory: externalLinksSwitch),
         ])
 

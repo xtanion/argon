@@ -24,6 +24,12 @@
 #include "content/public/browser/reload_type.h"
 #include "components/viz/common/frame_sinks/copy_output_result.h"
 #include "content/public/browser/render_widget_host_view.h"
+#include "base/functional/callback_helpers.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
+#include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
+#include "components/performance_manager/public/graph/page_node.h"
+#include "components/performance_manager/public/performance_manager.h"
+#include "content/public/browser/web_contents_capability_type.h"
 #include "skia/ext/skia_utils_mac.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "content/public/common/page_zoom.h"
@@ -83,6 +89,7 @@ void CloseAllTabs() {
 @implementation ACTab {
   ACProfile* _profile;
   std::unique_ptr<argon_core::ACTabHost> _host;
+  BOOL _frozen;
 }
 
 @synthesize delegate = _delegate;
@@ -162,7 +169,80 @@ void CloseAllTabs() {
 }
 
 - (void)setVisible:(BOOL)visible {
+  content::WebContents* contents = self.webContents;
+  if (visible && contents && contents->WasDiscarded()) {
+    contents->GetController().SetNeedsReload();
+    contents->GetController().LoadIfNecessary();
+  }
+  if (visible) {
+    _frozen = NO;
+  }
   _host->SetVisible(visible);
+}
+
+- (BOOL)isFrozen {
+  return _frozen;
+}
+
+- (void)setFrozen:(BOOL)frozen {
+  content::WebContents* contents = self.webContents;
+  if (!contents || frozen == _frozen ||
+      contents->GetVisibility() == content::Visibility::VISIBLE) {
+    return;
+  }
+  _frozen = frozen;
+  contents->SetPageFrozen(frozen);
+}
+
+- (void)discard {
+  content::WebContents* contents = self.webContents;
+  if (!contents || contents->WasDiscarded() ||
+      contents->GetVisibility() == content::Visibility::VISIBLE) {
+    return;
+  }
+  _frozen = NO;
+  contents->Discard(base::DoNothing());
+}
+
+- (BOOL)isDiscarded {
+  content::WebContents* contents = self.webContents;
+  return contents && contents->WasDiscarded();
+}
+
+- (BOOL)isCapturing {
+  content::WebContents* contents = self.webContents;
+  if (!contents) {
+    return NO;
+  }
+  scoped_refptr<MediaStreamCaptureIndicator> indicator =
+      MediaCaptureDevicesDispatcher::GetInstance()
+          ->GetMediaStreamCaptureIndicator();
+  if (indicator->IsCapturingUserMedia(contents) ||
+      indicator->IsBeingMirrored(contents) ||
+      indicator->IsCapturingTab(contents) ||
+      indicator->IsCapturingWindow(contents) ||
+      indicator->IsCapturingDisplay(contents)) {
+    return YES;
+  }
+  using Type = content::WebContentsCapabilityType;
+  for (Type type : {Type::kUSB, Type::kBluetoothConnected,
+                    Type::kBluetoothScanning, Type::kHID, Type::kSerial}) {
+    if (contents->IsCapabilityActive(type)) {
+      return YES;
+    }
+  }
+  return NO;
+}
+
+- (BOOL)hasUserEdits {
+  content::WebContents* contents = self.webContents;
+  if (!contents) {
+    return NO;
+  }
+  base::WeakPtr<performance_manager::PageNode> page =
+      performance_manager::PerformanceManager::
+          GetPrimaryPageNodeForWebContents(contents);
+  return page && (page->HadFormInteraction() || page->HadUserEdits());
 }
 
 - (void)toggleDevTools {

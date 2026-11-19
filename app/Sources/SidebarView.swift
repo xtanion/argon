@@ -1521,7 +1521,10 @@ final class TabRowView: HoverView {
         layer?.backgroundColor = isActive ? Palette.tabActive.cgColor : (isHovered ? Palette.tabHover.cgColor : nil)
     }
 
-    override func hoverChanged() { updateCloseButton() }
+    override func hoverChanged() {
+        updateCloseButton()
+        if isHovered { sidebar?.controller?.warmUp(tab) }
+    }
 
     private func updateCloseButton() {
         closeButton.isHidden = !isHovered || (tab.isPinned && !tab.isLoaded)
@@ -2822,7 +2825,10 @@ final class FavoriteCellView: HoverView {
         layer?.borderColor = border.cgColor
     }
 
-    override func hoverChanged() { needsDisplay = true }
+    override func hoverChanged() {
+        needsDisplay = true
+        if isHovered { sidebar?.controller?.warmUp(tab) }
+    }
 
     override func mouseDown(with event: NSEvent) {
         Motion.press(self, scale: 0.96)

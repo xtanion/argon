@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     enum Pane: String, CaseIterable {
-        case general, spaces, links, shortcuts
+        case general, spaces, links, shortcuts, importing
 
         var title: String {
             switch self {
@@ -11,6 +11,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             case .spaces: return "Spaces"
             case .links: return "Links"
             case .shortcuts: return "Shortcuts"
+            case .importing: return "Import"
+            }
+        }
+
+        var color: NSColor {
+            switch self {
+            case .general: return .systemGray
+            case .spaces: return .systemIndigo
+            case .links: return .systemTeal
+            case .shortcuts: return .systemPink
+            case .importing: return .systemOrange
             }
         }
 
@@ -20,21 +31,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             case .spaces: return "square.on.square"
             case .links: return "arrow.triangle.branch"
             case .shortcuts: return "keyboard"
+            case .importing: return "square.and.arrow.down"
             }
         }
     }
 
     static let shared = SettingsWindowController()
-    static let contentSize = NSSize(width: 720, height: 600)
-    static let headerHeight: CGFloat = 64
+    static let sidebarWidth: CGFloat = 168
+    static let contentSize = NSSize(width: 588, height: 600)
+    static let headerHeight: CGFloat = 44
 
     private var panes: [Pane: SettingsPane] = [:]
     private(set) var current: Pane = .general
-    private let tabBar = SettingsTabBar(panes: Pane.allCases)
+    private let sidebar = SettingsSidebar(panes: Pane.allCases)
     private let host = NSView()
 
     private init() {
-        let size = NSSize(width: Self.contentSize.width, height: Self.contentSize.height + Self.headerHeight)
+        let size = NSSize(width: Self.sidebarWidth + Self.contentSize.width, height: Self.contentSize.height)
         let window = SettingsWindow(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
@@ -46,19 +59,31 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.isReleasedWhenClosed = false
+        window.isOpaque = false
+        window.backgroundColor = .clear
         super.init(window: window)
         window.delegate = self
 
         let root = FlippedView(frame: NSRect(origin: .zero, size: size))
-        tabBar.frame = NSRect(x: 0, y: 0, width: size.width, height: Self.headerHeight)
-        tabBar.autoresizingMask = [.width]
-        tabBar.onSelect = { [weak self] pane in
+        let backdrop = NSVisualEffectView(frame: root.bounds)
+        backdrop.material = .sidebar
+        backdrop.blendingMode = .behindWindow
+        backdrop.state = .active
+        backdrop.autoresizingMask = [.width, .height]
+        root.addSubview(backdrop)
+        let tint = SettingsTint(frame: root.bounds)
+        tint.autoresizingMask = [.width, .height]
+        root.addSubview(tint)
+
+        sidebar.frame = NSRect(x: 0, y: 0, width: Self.sidebarWidth, height: size.height)
+        sidebar.autoresizingMask = [.height]
+        sidebar.onSelect = { [weak self] pane in
             guard let self, pane != self.current else { return }
             self.select(pane)
         }
-        host.frame = NSRect(x: 0, y: Self.headerHeight, width: size.width, height: Self.contentSize.height)
+        host.frame = NSRect(x: Self.sidebarWidth, y: 0, width: Self.contentSize.width, height: Self.contentSize.height)
         host.autoresizingMask = [.width, .height]
-        root.addSubview(tabBar)
+        root.addSubview(sidebar)
         root.addSubview(host)
         window.contentView = root
         select(.general)
@@ -78,7 +103,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         current = pane
         let controller = panes[pane] ?? makePane(pane)
         panes[pane] = controller
-        tabBar.selected = pane
+        sidebar.selected = pane
         controller.reload()
         host.subviews.forEach { $0.removeFromSuperview() }
         controller.view.frame = host.bounds
@@ -92,6 +117,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .spaces: return SpacesSettingsPane()
         case .links: return LinksSettingsPane()
         case .shortcuts: return ShortcutsSettingsPane()
+        case .importing: return ImportSettingsPane()
         }
     }
 
@@ -120,6 +146,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 }
 
+// Dims the blurred backdrop so the window reads as mostly solid.
+@MainActor
+final class SettingsTint: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.7).cgColor
+    }
+}
+
 // Never becomes main, so menu commands keep reaching the browser window behind it.
 @MainActor
 final class SettingsWindow: NSWindow {
@@ -130,7 +173,9 @@ final class SettingsWindow: NSWindow {
         positionTrafficLights()
     }
 
-    // Centres the traffic lights on the tab row instead of the default 28pt title bar.
+    private static let trafficLightInset: CGFloat = 16
+
+    // Centres the traffic lights on the header row instead of the default 28pt title bar.
     private func positionTrafficLights() {
         let types: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
         let buttons = types.compactMap { standardWindowButton($0) }
@@ -142,9 +187,10 @@ final class SettingsWindow: NSWindow {
             frame.origin.y = self.frame.height - height
             container.frame = frame
         }
-        for button in buttons {
-            let y = ((height - button.frame.height) / 2).rounded()
-            if button.frame.minY != y { button.setFrameOrigin(NSPoint(x: button.frame.minX, y: y)) }
+        let pitch = buttons[1].frame.minX - buttons[0].frame.minX
+        for (index, button) in buttons.enumerated() {
+            let origin = NSPoint(x: Self.trafficLightInset + CGFloat(index) * pitch, y: ((height - button.frame.height) / 2).rounded())
+            if button.frame.origin != origin { button.setFrameOrigin(origin) }
         }
     }
 
@@ -165,27 +211,31 @@ final class SettingsWindow: NSWindow {
 }
 
 @MainActor
-final class SettingsTabBar: NSView {
+final class SettingsSidebar: NSView {
     typealias Pane = SettingsWindowController.Pane
     var onSelect: ((Pane) -> Void)?
-    var selected: Pane? { didSet { buttons.forEach { $0.isSelected = $0.pane == selected } } }
-    private var buttons: [SettingsTabButton] = []
+    var selected: Pane? { didSet { items.forEach { $0.isSelected = $0.pane == selected } } }
+    private var items: [SettingsSidebarItem] = []
 
     init(panes: [Pane]) {
         super.init(frame: .zero)
         let stack = NSStackView()
-        stack.spacing = 4
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 2
         stack.translatesAutoresizingMaskIntoConstraints = false
         for pane in panes {
-            let button = SettingsTabButton(pane: pane)
-            button.onClick = { [weak self] in self?.onSelect?(pane) }
-            buttons.append(button)
-            stack.addArrangedSubview(button)
+            let item = SettingsSidebarItem(pane: pane)
+            item.onClick = { [weak self] in self?.onSelect?(pane) }
+            items.append(item)
+            stack.addArrangedSubview(item)
+            item.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: SettingsWindowController.headerHeight + 4),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
         ])
     }
 
@@ -197,7 +247,7 @@ final class SettingsTabBar: NSView {
     override func draw(_ dirtyRect: NSRect) {
         SettingsStyle.rowSeparator.setFill()
         let pixel = 1 / max(window?.backingScaleFactor ?? 2, 1)
-        NSRect(x: 0, y: bounds.height - pixel, width: bounds.width, height: pixel).fill()
+        NSRect(x: bounds.width - pixel, y: 0, width: pixel, height: bounds.height).fill()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -206,7 +256,7 @@ final class SettingsTabBar: NSView {
 }
 
 @MainActor
-final class SettingsTabButton: NSView {
+final class SettingsSidebarItem: NSView {
     let pane: SettingsWindowController.Pane
     var onClick: (() -> Void)?
     var isSelected = false { didSet { refresh() } }
@@ -221,23 +271,20 @@ final class SettingsTabButton: NSView {
         wantsLayer = true
         translatesAutoresizingMaskIntoConstraints = false
         iconView.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)?
-            .withSymbolConfiguration(.init(pointSize: 17, weight: .regular))
+            .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
         iconView.imageScaling = .scaleNone
-        label.font = .inter(11, weight: .medium)
-        label.alignment = .center
+        label.font = .inter(13)
         for view in [iconView, label] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 50),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 68),
-            widthAnchor.constraint(greaterThanOrEqualTo: label.widthAnchor, constant: 20),
-            iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            iconView.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            iconView.heightAnchor.constraint(equalToConstant: 22),
-            label.centerXAnchor.constraint(equalTo: centerXAnchor),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            heightAnchor.constraint(equalToConstant: 30),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 7),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 20),
+            label.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         setAccessibilityRole(.radioButton)
         setAccessibilityLabel(pane.title)
@@ -251,16 +298,16 @@ final class SettingsTabButton: NSView {
     override var wantsUpdateLayer: Bool { true }
 
     private func refresh() {
-        let tint: NSColor = isSelected ? .controlAccentColor : .secondaryLabelColor
-        iconView.contentTintColor = tint
-        label.textColor = tint
+        iconView.contentTintColor = isSelected ? .white : .secondaryLabelColor
+        label.textColor = isSelected ? .white : .labelColor
+        label.font = .inter(13, weight: isSelected ? .medium : .regular)
         needsDisplay = true
     }
 
     override func updateLayer() {
-        layer?.cornerRadius = 9
+        layer?.cornerRadius = 7
         layer?.cornerCurve = .continuous
-        layer?.backgroundColor = isSelected ? SettingsStyle.selection.cgColor : hovered ? SettingsStyle.hover.cgColor : nil
+        layer?.backgroundColor = isSelected ? NSColor.controlAccentColor.cgColor : hovered ? SettingsStyle.hover.cgColor : nil
     }
 
     override func updateTrackingAreas() {
@@ -289,9 +336,9 @@ class SettingsPane: NSViewController {
 
 @MainActor
 enum SettingsStyle {
-    static let width: CGFloat = 580
+    static let width: CGFloat = 556
     static let rowInset: CGFloat = 14
-    static let rowHeight: CGFloat = 44
+    static let rowHeight: CGFloat = 40
 
     static let cardFill = Palette.dynamic(dark: NSColor(white: 1, alpha: 0.045)) { NSColor(white: 1, alpha: 0.7) }
     static let cardBorder = Palette.dynamic(dark: NSColor(white: 1, alpha: 0.08)) { NSColor(white: 0, alpha: 0.09) }
@@ -303,6 +350,11 @@ enum SettingsStyle {
     static let title = NSFont.inter(13)
     static let subtitle = NSFont.inter(11.5)
     static let header = NSFont.inter(12, weight: .medium)
+
+    static func badge(_ symbol: String, fallback: String, color: NSColor, size: CGFloat = 22) -> NSImage {
+        let name = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) == nil ? fallback : symbol
+        return badge(name, color: color, size: size)
+    }
 
     static func badge(_ symbol: String, color: NSColor, size: CGFloat = 22) -> NSImage {
         let isEmoji = symbol.first.map { !$0.isASCII } ?? false
@@ -364,6 +416,7 @@ final class SettingsCard: SettingsSurface {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 0
+        stack.distribution = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -459,7 +512,12 @@ final class SettingsRow: NSView {
             ])
             textLeading = text.leadingAnchor.constraint(equalTo: badgeView.trailingAnchor, constant: 10)
         }
+        // Rows only set a minimum height, so without this a short pane leaves the
+        // layout ambiguous and one row can absorb the window's spare height.
+        let natural = heightAnchor.constraint(equalToConstant: SettingsStyle.rowHeight)
+        natural.priority = .init(260)
         var constraints = [
+            natural,
             heightAnchor.constraint(greaterThanOrEqualToConstant: SettingsStyle.rowHeight),
             textLeading,
             text.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -506,12 +564,8 @@ final class SettingsLinkRow: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         titleLabel.font = SettingsStyle.title
-        if let color {
-            iconView.image = SettingsStyle.badge(symbol, color: color)
-        } else {
-            iconView.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
-        }
+        iconView.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
         iconView.imageScaling = .scaleNone
         arrow.image = NSImage(systemSymbolName: hasBadge ? "arrow.right" : "arrow.up.forward", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
@@ -820,7 +874,9 @@ extension NSView {
         scroll.autohidesScrollers = true
         scroll.borderType = .noBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.contentView = TopAnchoredClipView()
+        let clipView = TopAnchoredClipView()
+        clipView.drawsBackground = false
+        scroll.contentView = clipView
         let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
         scroll.documentView = document
@@ -864,7 +920,7 @@ private final class TopAnchoredClipView: NSClipView {
 }
 
 extension NSStackView {
-    static func settingsColumn(_ views: [NSView], spacing: CGFloat = 14) -> NSStackView {
+    static func settingsColumn(_ views: [NSView], spacing: CGFloat = 10) -> NSStackView {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading

@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 final class LittleWindowController: NSWindowController, NSWindowDelegate, BrowserTabObserver {
     private static var open: [LittleWindowController] = []
+    static var profilesInUse: Set<String> { Set(open.compactMap { $0.tab.tab?.profile.identifier }) }
     private static let defaultSize = NSSize(width: 920, height: 660)
     private static let expandDuration: TimeInterval = 0.48
     private static let expandCurve = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)

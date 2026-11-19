@@ -114,7 +114,7 @@ ArgonCore (//argon_core, inside Chromium Framework.framework)
 - [x] Tab events: navigation, title, favicon, loading, new tab and pop-up
       requests, close, page fullscreen
 - [x] JS dialogs (app-modal), file pickers, eye dropper, page context menus
-- [ ] Find in page, zoom
+- [x] Find in page, zoom
 - [ ] `BrowserWindowInterface` and tab features on our windows (needed by
       extensions and by Chrome code that looks up a window)
 
@@ -137,20 +137,25 @@ ArgonCore (//argon_core, inside Chromium Framework.framework)
       WebAuthn sheet (phone/QR, security keys), HTTP auth
 - [x] Permission prompts (`ACPermissionPrompt` sheet), camera/mic requests
 - [x] DevTools docked in the tab view, Inspect from the context menu
-- [ ] Downloads panel (in progress)
+- [x] Downloads panel
 - [ ] iCloud Keychain passkeys: needs Apple's
       `com.apple.developer.web-browser.public-key-credential` entitlement for
       `dev.argon.browser`
 - Page info
-- Print preview (WebUI dialog), PDF viewer (needs extensions, M5)
-- Fullscreen video, picture-in-picture
+- [x] Print preview (WebUI dialog, also from background tabs), PDF viewer
+- [x] Fullscreen video, picture-in-picture
 
 ### M4: passwords and autofill
 - Native popups driven by Chrome's password manager and autofill
 
 ### M5: extensions
 - Extension system and content scripts come for free
-- `chrome.tabs` and `chrome.windows` through `BrowserWindowInterface`; bridge any gaps
+- [x] `chrome.tabs` (query, get, create, update, remove, events) and
+      `chrome.windows` (get, getAll, getCurrent, getLastFocused, update): each
+      space is a window, registered as a `WindowController` without a
+      `BrowserWindowInterface`
+- [ ] Not bridged: `windows.create`/`remove`, `tabs.move`, groups, split
+      view, `windows.onFocusChanged`
 - Toolbar actions and popups, extension context menus, side panel
 
 ### M6: around the browser

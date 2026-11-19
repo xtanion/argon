@@ -119,20 +119,24 @@ enum Palette {
     }
     static let minimumOpacity = 0.21
 
+    static let maximumWashAlpha: CGFloat = 0.85
+
     // Fitted to Arc over the same wallpaper: at the bottom of the slider Arc
-    // lays a faint near-white wash over a clear blur, not a dark one, and the
-    // space colour takes over as opacity rises.
+    // lays a faint near-white wash over a clear blur. Colour and alpha follow
+    // separate curves: the space colour is fully reached by mid-slider, and the
+    // translucent end keeps that true colour (pure black stays black) over some blur.
     static func frameWash(_ color: NSColor, opacity: CGFloat) -> NSColor {
         guard let rgb = color.usingColorSpace(.sRGB) else { return color.withAlphaComponent(opacity) }
-        let floor: CGFloat = 24 / 255, span: CGFloat = 220 / 255
         let u = min(max((opacity - minimumOpacity) / (1 - minimumOpacity), 0), 1)
-        let lift = 0.9 * (1 - u) * (1 - u)
-        func channel(_ c: CGFloat) -> CGFloat {
-            let base = floor + c * span
+        let c = min(u / 0.5, 1)
+        let lift = 0.9 * (1 - c) * (1 - c)
+        let floor: CGFloat = (24 / 255) * (1 - c), span: CGFloat = 1 - (35 / 255) * (1 - c)
+        func channel(_ value: CGFloat) -> CGFloat {
+            let base = floor + value * span
             return base + (1 - base) * lift
         }
         return NSColor(srgbRed: channel(rgb.redComponent), green: channel(rgb.greenComponent),
-                       blue: channel(rgb.blueComponent), alpha: 0.15 + 0.85 * u)
+                       blue: channel(rgb.blueComponent), alpha: 0.15 + (maximumWashAlpha - 0.15) * u)
     }
 
     // Flattens a translucent palette color onto `base`, for surfaces drawn over page content.

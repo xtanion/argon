@@ -131,6 +131,11 @@ Chromium without them. All of them are in `patches/argon/embedder-hooks.patch`:
   page context menus without a views widget.
 - `chrome/browser/devtools`: DevTools docks inside Argon's tab view, and Argon
   tabs count as DevTools "page" targets.
+- `chrome/browser/extensions/api/tabs`, `extension_tab_util`: Argon's tabs and
+  spaces reach `chrome.tabs` and `chrome.windows`. `ExternalTabsDelegate` lists
+  the tabs, `TabsEventRouter::OnExternalTab*` fires `onCreated`, `onActivated`
+  and `onRemoved` (and tracks them for `onUpdated`), and `windows_api.cc` accepts
+  `WindowController`s with no `BrowserWindowInterface` whose type is `normal`.
 - `chrome/browser/ui/views/overlay`: the picture in picture window's top bar in
   Argon's style (back to tab on the left, minimize and close on the right, SF
   Symbols). `argon_symbol.h` and `argon_symbol_mac.mm` are new files, so mark

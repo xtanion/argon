@@ -28,9 +28,16 @@ void NotifyApplicationWillShutDown();
 
 ACProfile* ProfileFor(Profile* profile);
 
-// Lets extension APIs (scripting, webNavigation, tabs.get) find Argon's tabs,
-// which live outside Chrome's tab strips.
+// Lets extension APIs (scripting, webNavigation, tabs, windows) find Argon's
+// tabs and windows, which live outside Chrome's tab strips.
 void RegisterTabsWithExtensions();
+// tabs.onCreated / onRemoved for Argon tabs.
+void AnnounceTabToExtensions(ACTab* tab);
+void RemoveTabFromExtensions(content::WebContents* contents);
+// Stops tab events while profiles shut down.
+void SuspendExtensionTabEvents();
+
+ACTab* TabForContents(content::WebContents* contents);
 
 // Profiles CHECK on destruction that none of their pages are still alive.
 void CloseAllTabs();

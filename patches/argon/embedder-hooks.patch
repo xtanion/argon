@@ -670,6 +670,266 @@ index 85f383edd4..373c99abc0 100644
    // Returns true on success. Out parameters are the ID of the default tab to
    // update and its web contents, or an error string.
    bool ComputeDefaultTabId(int& tab_id,
+diff --git a/chrome/browser/extensions/api/tabs/tabs_event_router.cc b/chrome/browser/extensions/api/tabs/tabs_event_router.cc
+index f6cff1cdba..fdd71a63fa 100644
+--- a/chrome/browser/extensions/api/tabs/tabs_event_router.cc
++++ b/chrome/browser/extensions/api/tabs/tabs_event_router.cc
+@@ -114,22 +114,25 @@ TabsEventRouter::TabEntry::TabEntry(TabsEventRouter& router,
+                                     content::WebContents& contents)
+     : WebContentsObserver(&contents),
+       router_(router) {
+-  // We should only get here for WebContents that are tabs.
+-  tabs::TabInterface* tab = tabs::TabInterface::GetFromContents(&contents);
+-  CHECK(tab);
+-
+-  pinned_state_subscription_ =
+-      tab->RegisterPinnedStateChanged(base::BindRepeating(
+-          &TabEntry::OnPinnedStateChanged, weak_factory_.GetWeakPtr()));
+-
+-  group_changed_subscription_ = tab->RegisterGroupChanged(base::BindRepeating(
+-      &TabEntry::OnGroupChanged, weak_factory_.GetWeakPtr()));
++  // Argon: external tabs have no TabInterface.
++  if (tabs::TabInterface* tab =
++          tabs::TabInterface::MaybeGetFromContents(&contents)) {
++    pinned_state_subscription_ =
++        tab->RegisterPinnedStateChanged(base::BindRepeating(
++            &TabEntry::OnPinnedStateChanged, weak_factory_.GetWeakPtr()));
++
++    group_changed_subscription_ =
++        tab->RegisterGroupChanged(base::BindRepeating(
++            &TabEntry::OnGroupChanged, weak_factory_.GetWeakPtr()));
++  }
+ 
+-  auto* audible_helper = RecentlyAudibleHelper::FromWebContents(&contents);
+-  recently_audible_subscription_ =
+-      audible_helper->RegisterRecentlyAudibleChangedCallback(
+-          base::BindRepeating(&TabEntry::OnRecentlyAudibleStateChanged,
+-                              weak_factory_.GetWeakPtr()));
++  if (auto* audible_helper =
++          RecentlyAudibleHelper::FromWebContents(&contents)) {
++    recently_audible_subscription_ =
++        audible_helper->RegisterRecentlyAudibleChangedCallback(
++            base::BindRepeating(&TabEntry::OnRecentlyAudibleStateChanged,
++                                weak_factory_.GetWeakPtr()));
++  }
+ }
+ 
+ TabsEventRouter::TabEntry::~TabEntry() = default;
+@@ -225,9 +228,40 @@ TabsEventRouter::TabsEventRouter(Profile* profile) : profile_(profile) {
+   // are fully instantiated before those methods are called.
+   platform_delegate_.emplace(*this, *profile);
+ 
++  if (ExtensionTabUtil::ExternalTabsDelegate* delegate =
++          ExtensionTabUtil::GetExternalTabsDelegate()) {
++    for (const auto& tab : delegate->GetTabs(profile)) {
++      if (!GetTabEntry(*tab.contents)) {
++        RegisterForTabNotifications(*tab.contents, tab.index);
++      }
++    }
++  }
++
+   initialized_ = true;
+ }
+ 
++void TabsEventRouter::OnExternalTabAdded(content::WebContents& contents,
++                                         int index,
++                                         bool active) {
++  if (GetTabEntry(contents)) {
++    return;
++  }
++  RegisterForTabNotifications(contents, index);
++  DispatchTabCreatedEvent(&contents, active);
++}
++
++void TabsEventRouter::OnExternalTabActivated(content::WebContents& contents) {
++  if (GetTabEntry(contents)) {
++    DispatchActiveTabChanged(contents);
++  }
++}
++
++void TabsEventRouter::OnExternalTabRemoved(content::WebContents& contents) {
++  if (GetTabEntry(contents)) {
++    DispatchTabRemovedEvent(contents, /*is_window_closing=*/false);
++  }
++}
++
+ TabsEventRouter::~TabsEventRouter() {
+   performance_manager::PageLiveStateDecorator::RemoveAllPageObserver(this);
+ }
+@@ -478,8 +512,13 @@ void TabsEventRouter::OnTabAdded(TabListInterface& tab_list,
+ 
+ void TabsEventRouter::OnActiveTabChanged(TabListInterface& tab_list,
+                                          tabs::TabInterface* tab) {
+-  content::WebContents* tab_contents = tab->GetContents();
+-  CHECK(tab_contents);
++  CHECK(tab->GetContents());
++  DispatchActiveTabChanged(*tab->GetContents());
++}
++
++void TabsEventRouter::DispatchActiveTabChanged(
++    content::WebContents& contents) {
++  content::WebContents* tab_contents = &contents;
+ 
+   base::ListValue args;
+   int tab_id = ExtensionTabUtil::GetTabId(tab_contents);
+diff --git a/chrome/browser/extensions/api/tabs/tabs_event_router.h b/chrome/browser/extensions/api/tabs/tabs_event_router.h
+index 4d9294956f..a1b33232c9 100644
+--- a/chrome/browser/extensions/api/tabs/tabs_event_router.h
++++ b/chrome/browser/extensions/api/tabs/tabs_event_router.h
+@@ -64,6 +64,14 @@ class TabsEventRouter : public favicon::FaviconDriverObserver,
+   TabsEventRouter& operator=(const TabsEventRouter&) = delete;
+   ~TabsEventRouter() override;
+ 
++  // Argon: tabs that live outside any TabListInterface (see
++  // ExtensionTabUtil::ExternalTabsDelegate) report their lifecycle here.
++  void OnExternalTabAdded(content::WebContents& contents,
++                          int index,
++                          bool active);
++  void OnExternalTabActivated(content::WebContents& contents);
++  void OnExternalTabRemoved(content::WebContents& contents);
++
+  private:
+   // The platform delegate is basically a platform-specific addendum to this
+   // class, so we allow it to reach into this class's internal state.
+@@ -176,6 +184,8 @@ class TabsEventRouter : public favicon::FaviconDriverObserver,
+ 
+   // Dispatches the `tabs.onCreated` API event for the given `contents`.
+   // `active` indicates if the tab is active in its tab strip.
++  void DispatchActiveTabChanged(content::WebContents& contents);
++
+   void DispatchTabCreatedEvent(content::WebContents* contents, bool active);
+ 
+   // Dispatches the `tabs.onRemoved` event. `is_window_closing` indicates if
+diff --git a/chrome/browser/extensions/api/tabs/windows_api.cc b/chrome/browser/extensions/api/tabs/windows_api.cc
+index f61a28afe9..6d63482d2a 100644
+--- a/chrome/browser/extensions/api/tabs/windows_api.cc
++++ b/chrome/browser/extensions/api/tabs/windows_api.cc
+@@ -401,6 +401,20 @@ bool UpdateWindowBoundsFromParams(const api::windows::Update::Params& params,
+ 
+ }  // namespace
+ 
++namespace {
++
++// Argon: embedder windows are registered as WindowControllers without a
++// BrowserWindowInterface. Document picture-in-picture windows also lack one,
++// but report themselves as popups.
++bool IsExternalNormalWindow(const WindowController* controller) {
++  return controller && !const_cast<WindowController*>(controller)
++                            ->GetBrowserWindowInterface() &&
++         controller->GetWindowTypeText() ==
++             api::tabs::ToString(api::tabs::WindowType::kNormal);
++}
++
++}  // namespace
++
+ ExtensionFunction::ResponseAction WindowsGetFunction::Run() {
+   std::optional<windows::Get::Params> params =
+       windows::Get::Params::Create(args());
+@@ -463,13 +477,20 @@ ExtensionFunction::ResponseAction WindowsGetLastFocusedFunction::Run() {
+         }
+         return true;  // Continue iterating.
+       });
+-  if (!last_focused_browser) {
+-    return RespondNow(Error(tabs_constants::kNoLastFocusedWindowError));
+-  }
+-
+   WindowController::PopulateTabBehavior populate_tab_behavior =
+       extractor.populate_tabs() ? WindowController::kPopulateTabs
+                                 : WindowController::kDontPopulateTabs;
++  if (!last_focused_browser) {
++    WindowController* external =
++        WindowControllerList::GetInstance()->CurrentWindowForFunctionWithFilter(
++            this, extractor.type_filters());
++    if (!IsExternalNormalWindow(external)) {
++      return RespondNow(Error(tabs_constants::kNoLastFocusedWindowError));
++    }
++    return RespondNow(WithArguments(external->CreateWindowValueForExtension(
++        extension(), populate_tab_behavior, source_context_type())));
++  }
++
+   base::DictValue windows = ExtensionTabUtil::CreateWindowValueForExtension(
+       *last_focused_browser, extension(), populate_tab_behavior,
+       source_context_type());
+@@ -487,6 +508,13 @@ ExtensionFunction::ResponseAction WindowsGetAllFunction::Run() {
+       extractor.populate_tabs() ? WindowController::kPopulateTabs
+                                 : WindowController::kDontPopulateTabs;
+   for (WindowController* controller : *WindowControllerList::GetInstance()) {
++    if (IsExternalNormalWindow(controller) &&
++        windows_util::CanOperateOnWindow(this, controller,
++                                         extractor.type_filters())) {
++      window_list.Append(controller->CreateWindowValueForExtension(
++          extension(), populate_tab_behavior, source_context_type()));
++      continue;
++    }
+     if (!controller->GetBrowserWindowInterface() ||
+         !windows_util::CanOperateOnWindow(this, controller,
+                                           extractor.type_filters())) {
+@@ -1054,6 +1082,9 @@ ExtensionFunction::ResponseAction WindowsUpdateFunction::Run() {
+ 
+   BrowserWindowInterface* browser =
+       window_controller->GetBrowserWindowInterface();
++  if (!browser && IsExternalNormalWindow(window_controller)) {
++    return RespondNow(UpdateExternalWindow(*params, *window_controller));
++  }
+   if (!browser) {
+     return RespondNow(Error(ExtensionTabUtil::kNoCrashBrowserError));
+   }
+@@ -1154,6 +1185,41 @@ ExtensionFunction::ResponseAction WindowsUpdateFunction::Run() {
+           source_context_type())));
+ }
+ 
++ExtensionFunction::ResponseValue WindowsUpdateFunction::UpdateExternalWindow(
++    const windows::Update::Params& params,
++    WindowController& window_controller) {
++  ui::BaseWindow* window = window_controller.window();
++  gfx::Rect bounds = window->IsMinimized() ? window->GetRestoredBounds()
++                                           : window->GetBounds();
++  const bool set_bounds = UpdateWindowBoundsFromParams(params, bounds);
++  if (set_bounds && !WindowBoundsIntersectDisplays(bounds)) {
++    return Error(tabs_constants::kInvalidWindowBoundsError);
++  }
++
++  switch (ConvertToWindowShowState(params.update_info.state)) {
++    case ui::mojom::WindowShowState::kMinimized:
++      window->Minimize();
++      break;
++    case ui::mojom::WindowShowState::kMaximized:
++      window->Maximize();
++      break;
++    case ui::mojom::WindowShowState::kNormal:
++      window->Restore();
++      break;
++    default:
++      break;
++  }
++  if (set_bounds) {
++    window->SetBounds(bounds);
++  }
++  if (params.update_info.focused.value_or(false)) {
++    window->Activate();
++  }
++  return WithArguments(window_controller.CreateWindowValueForExtension(
++      extension(), WindowController::kDontPopulateTabs,
++      source_context_type()));
++}
++
+ bool WindowsUpdateFunction::UpdateWindowState(
+     const api::windows::Update::Params& params,
+     BrowserWindowInterface* browser,
+diff --git a/chrome/browser/extensions/api/tabs/windows_api.h b/chrome/browser/extensions/api/tabs/windows_api.h
+index 01b97ee53e..971149daef 100644
+--- a/chrome/browser/extensions/api/tabs/windows_api.h
++++ b/chrome/browser/extensions/api/tabs/windows_api.h
+@@ -102,6 +102,9 @@ class WindowsUpdateFunction : public ExtensionFunction {
+   DECLARE_EXTENSION_FUNCTION("windows.update", WINDOWS_UPDATE)
+ 
+  private:
++  // Argon: applies focus, state and bounds to an embedder window.
++  ResponseValue UpdateExternalWindow(const api::windows::Update::Params& params,
++                                     WindowController& window_controller);
+   // Applies the updates from `params` to the `browser` window. Returns false if
+   // the `browser` or `window_controller` was synchronously destroyed during a
+   // platform window state transition.
 diff --git a/chrome/browser/extensions/extension_tab_util.cc b/chrome/browser/extensions/extension_tab_util.cc
 index 20c6eaf858..5f6b73157f 100644
 --- a/chrome/browser/extensions/extension_tab_util.cc
@@ -1313,3 +1573,143 @@ index 0afdeb691c..fe77c900a9 100644
    constexpr int kOriginHeight = 24;
    constexpr int kOriginRightMargin = 80;
    constexpr int kProgressBarHeight = 26;
+diff --git a/chrome/browser/ui/views/profiles/profile_picker_view.cc b/chrome/browser/ui/views/profiles/profile_picker_view.cc
+index bce0ed42f9..3e40de77f8 100644
+--- a/chrome/browser/ui/views/profiles/profile_picker_view.cc
++++ b/chrome/browser/ui/views/profiles/profile_picker_view.cc
+@@ -6,6 +6,7 @@
+ 
+ #include <algorithm>
+ 
++#include "base/command_line.h"
+ #include "base/check_deref.h"
+ #include "base/debug/dump_without_crashing.h"
+ #include "base/feature_list.h"
+@@ -161,6 +162,11 @@ void ClearLockedProfilesFirstBrowserKeepAlive() {
+ 
+ // static
+ void ProfilePicker::Show(Params&& params) {
++  // The Argon native shell keeps one profile per Space and never shows
++  // Chromium's picker.
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch("argon-embedder")) {
++    return;
++  }
+   // Re-open with new params if necessary.
+   if (g_profile_picker_view && g_profile_picker_view->MaybeReopen(params)) {
+     return;
+diff --git a/components/constrained_window/constrained_window_views.cc b/components/constrained_window/constrained_window_views.cc
+index cd235694d9..d9c29fc8a3 100644
+--- a/components/constrained_window/constrained_window_views.cc
++++ b/components/constrained_window/constrained_window_views.cc
+@@ -172,7 +172,9 @@ void UpdateModalDialogPosition(views::Widget* widget,
+   // modal dialogs are displayed as sheets, and their position is managed by a
+   // ConstrainedWindowSheetController instance.
+   if (!host_widget) {
+-    widget->SetSize(size);
++    if (!dialog_host->PlaceDialog(widget->GetNativeWindow(), size)) {
++      widget->SetSize(size);
++    }
+     return;
+   }
+ 
+diff --git a/components/web_modal/modal_dialog_host.cc b/components/web_modal/modal_dialog_host.cc
+index 35f4b8d767..b7129b5528 100644
+--- a/components/web_modal/modal_dialog_host.cc
++++ b/components/web_modal/modal_dialog_host.cc
+@@ -19,4 +19,9 @@ bool ModalDialogHost::ShouldConstrainDialogBoundsByHost() {
+ 
+ void ModalDialogHost::NotifyPositionRequiresUpdate() {}
+ 
++bool ModalDialogHost::PlaceDialog(gfx::NativeWindow dialog,
++                                  const gfx::Size& size) {
++  return false;
++}
++
+ }  // namespace web_modal
+diff --git a/components/web_modal/modal_dialog_host.h b/components/web_modal/modal_dialog_host.h
+index a1410173b8..7149324548 100644
+--- a/components/web_modal/modal_dialog_host.h
++++ b/components/web_modal/modal_dialog_host.h
+@@ -54,6 +54,10 @@ class WEB_MODAL_EXPORT ModalDialogHost {
+ 
+   // Notify observers that the dialog position needs to be updated.
+   virtual void NotifyPositionRequiresUpdate();
++
++  // Lets a host whose view is not inside a views::Widget place `dialog`
++  // itself. Returns false to fall back to only resizing the dialog.
++  virtual bool PlaceDialog(gfx::NativeWindow dialog, const gfx::Size& size);
+ };
+ 
+ }  // namespace web_modal
+diff --git a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc
+index 9905dd3b15..8f848f20f0 100644
+--- a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc
++++ b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.cc
+@@ -16,7 +16,11 @@ namespace views {
+ 
+ remote_cocoa::mojom::MenuControllerParamsPtr MenuControllerParamsForWidget(
+     Widget* widget) {
+-  auto* color_provider = widget->GetColorProvider();
++  return MenuControllerParamsForColorProvider(widget->GetColorProvider());
++}
++
++remote_cocoa::mojom::MenuControllerParamsPtr
++MenuControllerParamsForColorProvider(const ui::ColorProvider* color_provider) {
+   auto params = remote_cocoa::mojom::MenuControllerParams::New();
+ 
+   // The preferred font is slightly smaller and slightly more bold than the
+diff --git a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h
+index b8bc27787d..5a80e1e6bc 100644
+--- a/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h
++++ b/ui/views/controls/menu/menu_controller_cocoa_delegate_params.h
+@@ -8,6 +8,10 @@
+ #include "components/remote_cocoa/common/menu.mojom-forward.h"
+ #include "ui/views/views_export.h"
+ 
++namespace ui {
++class ColorProvider;
++}
++
+ namespace views {
+ class Widget;
+ 
+@@ -16,6 +20,10 @@ class Widget;
+ VIEWS_EXPORT remote_cocoa::mojom::MenuControllerParamsPtr
+ MenuControllerParamsForWidget(Widget* widget);
+ 
++// Same as above for menus over views that are not inside a views::Widget.
++VIEWS_EXPORT remote_cocoa::mojom::MenuControllerParamsPtr
++MenuControllerParamsForColorProvider(const ui::ColorProvider* color_provider);
++
+ }  // namespace views
+ 
+ #endif  // UI_VIEWS_CONTROLS_MENU_MENU_CONTROLLER_COCOA_DELEGATE_PARAMS_H_
+diff --git a/ui/views/widget/native_widget_mac.mm b/ui/views/widget/native_widget_mac.mm
+index 02db68344e..c6e618891f 100644
+--- a/ui/views/widget/native_widget_mac.mm
++++ b/ui/views/widget/native_widget_mac.mm
+@@ -383,7 +383,10 @@ void OnDidChangeFocus(View* focused_before, View* focused_now) override {
+   gfx::NativeView child = GetNativeView();
+   DCHECK_NE(child, new_parent);
+   if (new_parent) {
+-    DCHECK([new_parent.GetNativeNSView() window]);
++    // Embedders may host tab-modal dialogs in a plain AppKit view, which is
++    // out of any window while its tab is in the background.
++    DCHECK([new_parent.GetNativeNSView() window] ||
++           !NativeWidgetMacNSWindowHost::GetFromNativeView(new_parent));
+     CHECK(new_parent);
+     CHECK_NE([child.GetNativeNSView() superview], new_parent.GetNativeNSView());
+   }
+@@ -598,8 +601,11 @@ void OnDidChangeFocus(View* focused_before, View* focused_now) override {
+   // A peculiarity of the constrained window framework is that it permits a
+   // dialog of ModalType::kWindow to have a null parent window; falling back to
+   // a non-modal window in this case.
++  // Embedders whose web contents live in a plain AppKit view host child-modal
++  // dialogs without a parent widget and position them themselves.
+   DCHECK(ns_window_host_->parent() ||
+-         modal_type == ui::mojom::ModalType::kWindow);
++         modal_type == ui::mojom::ModalType::kWindow ||
++         modal_type == ui::mojom::ModalType::kChild);
+ 
+   // Everything happens upon show.
+ }

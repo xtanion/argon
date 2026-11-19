@@ -28,8 +28,8 @@ targets:
       properties:
         CFBundleName: Argon
         CFBundleDisplayName: Argon
-        CFBundleShortVersionString: "0.3.5"
-        CFBundleVersion: "11"
+        CFBundleShortVersionString: "0.3.6"
+        CFBundleVersion: "12"
         NSPrincipalClass: BrowserCrApplication
         LSMinimumSystemVersion: "13.0"
         NSSupportsAutomaticGraphicsSwitching: true

@@ -186,7 +186,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     private func showActiveTab() {
         let tab = activeSpace.activeTab
-        if displayedTab !== tab {
+        let changed = displayedTab !== tab
+        if changed {
             displayedTab?.lastViewed = Date()
             closeFindBar(focusPage: false)
             enterAutoPictureInPicture(leaving: displayedTab)
@@ -207,6 +208,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         page.isVisible = true
         if root.commandBar == nil { page.focus() }
         sidebar.updateToolbar(for: tab)
+        if changed { Application.shared.extensionTabDidActivate(page) }
     }
 
     // Favorites are shared by every space on the same profile, so the active space wins.
@@ -351,6 +353,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             let space = Space(name: name, symbol: symbol, hue: hue, profileIdentifier: identifier)
             space.profile = profile
             self.spaces.append(space)
+            Application.shared.extensionWindowsDidChange()
             self.selectSpace(self.spaces.count - 1)
             completion?(space)
         }
@@ -409,6 +412,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
                 let sharesProfile = self.spaces.contains { $0 !== space && $0.profileIdentifier == space.profileIdentifier }
                 (sharesProfile ? space.pinnedTabs + space.tabs : space.allTabs).forEach { $0.close() }
                 self.spaces.remove(at: index)
+                Application.shared.extensionWindowsDidChange()
                 if self.activeIndex > index { self.activeIndex -= 1 }
                 self.applyFrame()
                 self.showActiveTab()

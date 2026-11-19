@@ -10,7 +10,8 @@ extension BrowserWindowController: ExtensionTabsDelegate {
             let tabs = space.allTabs.filter { seen.insert(ObjectIdentifier($0)).inserted }
             let pinned = (space.favorites + space.pinnedTabs).compactMap(\.tab)
             let entry = ExtensionWindow(key: space, tabs: tabs.compactMap(\.tab), activeTab: space.activeTab?.tab,
-                                         pinnedTabs: pinned, focused: space === activeSpace && window?.isVisible == true)
+                                         pinnedTabs: pinned, focused: space === activeSpace && window?.isVisible == true,
+                                         window: window)
             return (space, entry)
         }
         return spaces.compactMap { space in windows.first { $0.0 === space }?.1 }

@@ -62,111 +62,17 @@ NSHashTable<ACTab*>* LiveTabs() {
 
 namespace argon_core {
 
-class ExtensionTabsBridge
-    : public extensions::ExtensionTabUtil::ExternalTabsDelegate {
- public:
-  std::vector<Tab> GetTabs(content::BrowserContext* context) override {
-    std::vector<Tab> result;
-    id<ACExtensionTabsDelegate> delegate =
-        ACApplication.sharedApplication.extensionTabsDelegate;
-    ACProfile* profile = ProfileFor(Profile::FromBrowserContext(context));
-    if (!delegate || !profile) {
-      return result;
-    }
-    for (ACExtensionWindow* window in
-         [delegate extensionWindowsForProfile:profile]) {
-      SessionID window_id = WindowIdFor(window.key);
-      int index = 0;
-      for (ACTab* tab in window.tabs) {
-        content::WebContents* contents = tab.webContents;
-        if (!contents || contents->GetBrowserContext() != context) {
-          continue;
-        }
-        auto* session = sessions::SessionTabHelper::FromWebContents(contents);
-        if (session && session->window_id() != window_id) {
-          session->SetWindowID(window_id);
-        }
-        Tab entry;
-        entry.contents = contents;
-        entry.window_id = window_id.id();
-        entry.index = index++;
-        entry.active = tab == window.activeTab;
-        entry.pinned = [window.pinnedTabs containsObject:tab];
-        entry.focused_window = window.focused;
-        result.push_back(entry);
-      }
-    }
-    return result;
-  }
-
-  content::WebContents* CreateTab(content::BrowserContext* context,
-                                  int window_id,
-                                  const GURL& url,
-                                  bool active,
-                                  bool pinned) override {
-    id<ACExtensionTabsDelegate> delegate =
-        ACApplication.sharedApplication.extensionTabsDelegate;
-    ACProfile* profile = ProfileFor(Profile::FromBrowserContext(context));
-    if (!delegate || !profile) {
-      return nullptr;
-    }
-    id key = nil;
-    if (window_id >= 0) {
-      key = [WindowKeys() objectForKey:@(window_id)];
-      if (!key) {
-        return nullptr;
-      }
-    }
-    NSURL* page = nil;
-    if (!url.SchemeIs("chrome") || url.host() != "newtab") {
-      page = net::NSURLWithGURL(url);
-    }
-    ACTab* tab = [delegate extensionOpenTabWithURL:page
-                                          inWindow:key
-                                           profile:profile
-                                            active:active
-                                            pinned:pinned];
-    return tab.webContents;
-  }
-
-  void ActivateTab(content::WebContents* contents) override {
-    id<ACExtensionTabsDelegate> delegate =
-        ACApplication.sharedApplication.extensionTabsDelegate;
-    for (ACTab* tab in LiveTabs().allObjects) {
-      if (tab.webContents == contents) {
-        [delegate extensionActivateTab:tab];
-        return;
-      }
+ACTab* TabForContents(content::WebContents* contents) {
+  for (ACTab* tab in LiveTabs().allObjects) {
+    if (tab.webContents == contents) {
+      return tab;
     }
   }
-
- private:
-  static NSMapTable<NSNumber*, id>* WindowKeys() {
-    static NSMapTable<NSNumber*, id>* keys =
-        [NSMapTable strongToWeakObjectsMapTable];
-    return keys;
-  }
-
-  static SessionID WindowIdFor(id key) {
-    static NSMapTable<id, NSNumber*>* ids =
-        [NSMapTable weakToStrongObjectsMapTable];
-    NSNumber* known = [ids objectForKey:key];
-    if (known) {
-      return SessionID::FromSerializedValue(known.intValue);
-    }
-    SessionID fresh = SessionID::NewUnique();
-    [ids setObject:@(fresh.id()) forKey:key];
-    [WindowKeys() setObject:key forKey:@(fresh.id())];
-    return fresh;
-  }
-};
-
-void RegisterTabsWithExtensions() {
-  static base::NoDestructor<ExtensionTabsBridge> bridge;
-  extensions::ExtensionTabUtil::SetExternalTabsDelegate(bridge.get());
+  return nil;
 }
 
 void CloseAllTabs() {
+  SuspendExtensionTabEvents();
   for (ACTab* tab in LiveTabs().allObjects) {
     [tab close];
   }
@@ -189,11 +95,19 @@ void CloseAllTabs() {
     _host =
         std::make_unique<argon_core::ACTabHost>(self, std::move(contents));
     [LiveTabs() addObject:self];
+    argon_core::AnnounceTabToExtensions(self);
   }
   return self;
 }
 
 - (void)dealloc {
+  [self releaseHost];
+}
+
+- (void)releaseHost {
+  if (_host) {
+    argon_core::RemoveTabFromExtensions(_host->contents());
+  }
   _host.reset();
 }
 
@@ -498,7 +412,7 @@ void CloseAllTabs() {
 }
 
 - (void)close {
-  _host.reset();
+  [self releaseHost];
 }
 
 #pragma mark - Host callbacks
@@ -585,32 +499,6 @@ void CloseAllTabs() {
   dispatch_async(dispatch_get_main_queue(), ^{
     (void)newTab;
   });
-}
-
-@end
-
-@implementation ACExtensionWindow
-
-@synthesize key = _key;
-@synthesize tabs = _tabs;
-@synthesize activeTab = _activeTab;
-@synthesize pinnedTabs = _pinnedTabs;
-@synthesize focused = _focused;
-
-- (instancetype)initWithKey:(id)key
-                       tabs:(NSArray<ACTab*>*)tabs
-                  activeTab:(ACTab*)activeTab
-                 pinnedTabs:(NSArray<ACTab*>*)pinnedTabs
-                    focused:(BOOL)focused {
-  self = [super init];
-  if (self) {
-    _key = key;
-    _tabs = [tabs copy];
-    _activeTab = activeTab;
-    _pinnedTabs = [pinnedTabs copy];
-    _focused = focused;
-  }
-  return self;
 }
 
 @end

@@ -17,6 +17,7 @@ source_set("core") {
     "browser/ac_content_browser_client.cc",
     "browser/ac_content_browser_client.h",
     "browser/ac_download.mm",
+    "browser/ac_extension_windows.mm",
     "browser/ac_internal.h",
     "browser/ac_passwords_ui.h",
     "browser/ac_passwords_ui.mm",

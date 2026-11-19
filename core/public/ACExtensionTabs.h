@@ -5,12 +5,13 @@
 #ifndef ARGON_CORE_PUBLIC_ACEXTENSIONTABS_H_
 #define ARGON_CORE_PUBLIC_ACEXTENSIONTABS_H_
 
-#import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
 
 #import "ACExport.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class ACApplication;
 @class ACProfile;
 @class ACTab;
 
@@ -27,12 +28,14 @@ NS_SWIFT_NAME(ExtensionWindow)
 @property(readonly, nullable) ACTab* activeTab;
 @property(readonly, copy) NSArray<ACTab*>* pinnedTabs;
 @property(readonly, getter=isFocused) BOOL focused;
+@property(readonly, weak, nullable) NSWindow* window;
 
 - (instancetype)initWithKey:(id)key
                        tabs:(NSArray<ACTab*>*)tabs
                   activeTab:(nullable ACTab*)activeTab
                  pinnedTabs:(NSArray<ACTab*>*)pinnedTabs
-                    focused:(BOOL)focused NS_DESIGNATED_INITIALIZER;
+                    focused:(BOOL)focused
+                     window:(nullable NSWindow*)window NS_DESIGNATED_INITIALIZER;
 - (instancetype)init NS_UNAVAILABLE;
 
 @end
@@ -48,6 +51,13 @@ NS_SWIFT_NAME(ExtensionTabsDelegate)
                                     active:(BOOL)active
                                     pinned:(BOOL)pinned;
 - (void)extensionActivateTab:(ACTab*)tab;
+@end
+
+@interface ACApplication (ExtensionTabs)
+// Call when spaces are added or removed, so chrome.windows sees them.
+- (void)extensionWindowsDidChange;
+// Call when the user switches to `tab`, for chrome.tabs.onActivated.
+- (void)extensionTabDidActivate:(ACTab*)tab;
 @end
 
 NS_ASSUME_NONNULL_END

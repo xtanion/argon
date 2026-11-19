@@ -453,8 +453,16 @@ gfx::Point ACTabHost::GetDialogPosition(const gfx::Size& size) {
   return gfx::Point(std::max(0, (host.width() - size.width()) / 2), 0);
 }
 
+// A background tab that was never shown has no size yet, and macOS cannot
+// create a zero-sized dialog window, so size it for the browser window.
 gfx::Size ACTabHost::GetMaximumDialogSize() {
-  return contents_->GetContainerBounds().size();
+  gfx::Size size = contents_->GetContainerBounds().size();
+  if (!size.IsEmpty()) {
+    return size;
+  }
+  NSWindow* window = NSApp.mainWindow ?: NSApp.keyWindow;
+  NSSize fallback = window ? window.contentLayoutRect.size : NSMakeSize(1024, 768);
+  return gfx::Size(fallback.width, fallback.height);
 }
 
 void ACTabHost::AddObserver(web_modal::ModalDialogHostObserver* observer) {

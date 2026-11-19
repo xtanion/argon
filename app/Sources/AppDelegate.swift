@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, ApplicationDelegate {
             let controller = BrowserWindowController(spaces: loaded, activeIndex: state.activeSpace)
             self.controller = controller
             application.extensionTabsDelegate = controller
+            application.extensionWindowsDidChange()
             controller.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
             BackgroundWorker.shared.register(UpdateCheckJob())

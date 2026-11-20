@@ -4,6 +4,42 @@ An Arc-style browser for macOS. A native Swift + AppKit app owns the whole
 interface: sidebar, spaces, command bar and page card. Chromium supplies the
 engine and Chrome's back-end services.
 
+![Argon with its sidebar, favorites, a pinned folder and open tabs](docs/screenshot.png)
+
+See [docs/features.md](docs/features.md) for everything Argon does.
+
+## Installation
+
+Argon needs an Apple silicon Mac running macOS 13 or later.
+
+1. Download the latest `Argon-<version>-arm64.dmg` from
+   [Releases](https://github.com/xtanion/argon/releases).
+2. Open the DMG and drag Argon into Applications.
+3. Open Argon from Applications.
+
+Later versions install from the update card at the bottom of the sidebar.
+
+### "Apple could not verify Argon"
+
+Argon is signed with a free Apple development certificate, not a paid
+Developer ID, so Apple hasn't notarized it. The first time you open it, macOS
+blocks it with a warning that it can't check the app for malicious software.
+To open it anyway:
+
+1. Click **Done** on the warning.
+2. Open **System Settings > Privacy & Security** and scroll down to Security.
+3. Next to "Argon was blocked to protect your Mac", click **Open Anyway**.
+4. Confirm with **Open Anyway** again and enter your password.
+
+You only need to do this once. Right-clicking the app and choosing Open no
+longer skips this check on recent macOS versions.
+
+If you'd rather use Terminal, clear the quarantine flag instead:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Argon.app
+```
+
 ## Why Argon?
 
 > Arc's sunsetting made me sad, and it was time to switch. I gave every other

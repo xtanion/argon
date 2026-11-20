@@ -35,6 +35,7 @@ final class SidebarView: NSView {
     private struct SpaceSwipe {
         var offset: CGFloat = 0
         var velocity: CGFloat = 0
+        var lastTime: TimeInterval = 0
         var target: Int?
         var direction = 0
         let snapshot: NSImageView
@@ -494,9 +495,9 @@ final class SidebarView: NSView {
             if swipeAxisLocked == nil, event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0 {
                 swipeAxisLocked = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
             }
-            if swipeAxisLocked == true { trackSwipe(by: event.scrollingDeltaX) }
+            if swipeAxisLocked == true { trackSwipe(by: event.scrollingDeltaX, at: event.timestamp) }
         case .ended, .cancelled:
-            endSwipe(cancelled: event.phase == .cancelled)
+            endSwipe(cancelled: event.phase == .cancelled, at: event.timestamp)
         default:
             break
         }
@@ -504,7 +505,7 @@ final class SidebarView: NSView {
 
     private var pageWidth: CGFloat { spaceClip.bounds.width }
 
-    private func trackSwipe(by delta: CGFloat) {
+    private func trackSwipe(by delta: CGFloat, at time: TimeInterval) {
         guard let controller, delta != 0 else { return }
         if swipe == nil {
             guard !spaceClip.bounds.isEmpty, let snapshot = makeSnapshot() else { return }
@@ -516,7 +517,12 @@ final class SidebarView: NSView {
         }
         guard var current = swipe else { return }
         current.offset += delta
-        current.velocity = delta
+        let dt = current.lastTime > 0 ? time - current.lastTime : 0
+        if dt > 0 {
+            let instant = delta / CGFloat(dt)
+            current.velocity = dt > 0.1 ? instant : current.velocity * 0.6 + instant * 0.4
+        }
+        current.lastTime = time
         let direction = current.offset > 0 ? -1 : (current.offset < 0 ? 1 : current.direction)
         if direction != current.direction {
             current.direction = direction
@@ -531,12 +537,9 @@ final class SidebarView: NSView {
                 spaceContent.isHidden = true
             }
         }
+        if current.target != nil { current.offset = max(-pageWidth, min(pageWidth, current.offset)) }
         swipe = current
         applySwipe(current)
-        if current.target != nil, abs(current.offset) >= pageWidth * 0.25 {
-            swipeAxisLocked = false
-            settleSwipe(current, commit: true)
-        }
     }
 
     private func applySwipe(_ swipe: SpaceSwipe) {
@@ -555,11 +558,20 @@ final class SidebarView: NSView {
         return sign * (1 - 1 / (x * 0.55 / max(limit, 1) + 1)) * limit * 0.5
     }
 
-    private func endSwipe(cancelled: Bool) {
-        guard let current = swipe else { return }
+    private func endSwipe(cancelled: Bool, at time: TimeInterval) {
+        guard var current = swipe else { return }
+        if time - current.lastTime > 0.08 { current.velocity = 0 }
         let width = pageWidth
-        let flicked = abs(current.velocity) > 18 && (current.velocity < 0) == (current.offset < 0)
-        let commit = !cancelled && current.target != nil && (abs(current.offset) > width * 0.25 || flicked)
+        let toward = (current.velocity < 0) == (current.offset < 0)
+        let fast = abs(current.velocity) > 350
+        let commit: Bool
+        if cancelled || current.target == nil {
+            commit = false
+        } else if fast {
+            commit = toward
+        } else {
+            commit = abs(current.offset) > width * 0.5
+        }
         settleSwipe(current, commit: commit)
     }
 
@@ -567,11 +579,16 @@ final class SidebarView: NSView {
         let width = pageWidth
         let snapshotX: CGFloat = commit ? -CGFloat(current.direction) * width : 0
         let contentX: CGFloat = commit ? 0 : CGFloat(current.direction) * width
+        let remaining = commit ? width - abs(current.offset) : abs(current.offset)
+        let speed = abs(current.velocity)
+        var duration = 0.12 + 0.2 * Double(remaining / max(width, 1))
+        if speed > 350 { duration = min(duration, Double(remaining / speed) * 2.2) }
+        duration = max(0.12, min(0.32, duration))
         swipe = nil
         swipeSettling = true
         if commit, let target = current.target { controller?.previewSpaceColor(toward: target, progress: 1) }
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = Motion.reduced ? 0 : 0.32
+            context.duration = Motion.reduced ? 0 : duration
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
             current.snapshot.animator().setFrameOrigin(NSPoint(x: snapshotX, y: 0))
             spaceContent.animator().setFrameOrigin(NSPoint(x: contentX, y: 0))

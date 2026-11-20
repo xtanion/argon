@@ -1781,12 +1781,10 @@ final class URLPillView: HoverView {
             controlsButton.mouseDown(with: event)
             return
         }
-        Motion.press(self, scale: 0.98)
         onClick?()
     }
 
     override func mouseUp(with event: NSEvent) {
-        Motion.release(self)
         let point = convert(event.locationInWindow, from: nil)
         if copyButton.alphaValue > 0, copyButton.frame.contains(point) {
             copyButton.mouseUp(with: event)

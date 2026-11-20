@@ -257,7 +257,7 @@ enum Motion {
         return bez(y1, y2, t)
     }
 
-    static let pressDuration: CFTimeInterval = 0.1
+    static let pressDuration: CFTimeInterval = 0.07
 
     static func press(_ view: NSView, scale: CGFloat = 0.97) {
         guard let layer = view.layer, !reduced else { return }
@@ -285,8 +285,8 @@ enum Motion {
         spring.fromValue = delay > 0 ? press.toValue : NSValue(caTransform3D: layer.presentation()?.transform ?? CATransform3DIdentity)
         spring.toValue = NSValue(caTransform3D: CATransform3DIdentity)
         spring.mass = 1
-        spring.stiffness = 220
-        spring.damping = 18
+        spring.stiffness = 420
+        spring.damping = 28
         spring.duration = spring.settlingDuration
         spring.beginTime = layer.convertTime(CACurrentMediaTime() + delay, from: nil)
         spring.fillMode = .forwards

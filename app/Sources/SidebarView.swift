@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 final class SidebarView: NSView {
     weak var controller: BrowserWindowController?
 
+    private let windowButtons = WindowButtonsView()
     private let toggleButton = IconButton(symbol: "sidebar.left", size: 15, toolTip: "Hide Sidebar")
     private let backButton = IconButton(symbol: "arrow.left", size: 15, toolTip: "Back")
     private let forwardButton = IconButton(symbol: "arrow.right", size: 15, toolTip: "Forward")
@@ -105,7 +106,7 @@ final class SidebarView: NSView {
         for view in [favoritesGrid, spaceHeader, tabScroll] as [NSView] {
             spaceContent.addSubview(view)
         }
-        for view in [toggleButton, backButton, forwardButton, reloadButton, pill, spaceClip, listBottomEdge, spaceBar, nowPlaying, updateChip] as [NSView] {
+        for view in [windowButtons, toggleButton, backButton, forwardButton, reloadButton, pill, spaceClip, listBottomEdge, spaceBar, nowPlaying, updateChip] as [NSView] {
             addSubview(view)
         }
     }
@@ -156,6 +157,8 @@ final class SidebarView: NSView {
         let size = Metrics.toolbarButtonSize
         let y = (Metrics.titlebarHeight - size) / 2
         let lightsMaxX = (window as? BrowserWindow)?.trafficLightsMaxX ?? 67
+        windowButtons.isHidden = window?.styleMask.contains(.fullScreen) ?? false
+        windowButtons.frame = NSRect(x: Metrics.trafficLightInset, y: 0, width: windowButtons.fittingWidth, height: Metrics.titlebarHeight)
         toggleButton.frame = NSRect(x: lightsMaxX + 6, y: y, width: size, height: size)
         reloadButton.frame = NSRect(x: w - 4 - size, y: y, width: size, height: size)
         forwardButton.frame = reloadButton.frame.offsetBy(dx: -Metrics.toolbarButtonPitch, dy: 0)

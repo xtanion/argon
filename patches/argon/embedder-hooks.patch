@@ -1613,6 +1613,44 @@ index bce0ed42f9..3e40de77f8 100644
    // Re-open with new params if necessary.
    if (g_profile_picker_view && g_profile_picker_view->MaybeReopen(params)) {
      return;
+diff --git a/chrome/browser/ui/webui/settings/password_manager_handler.cc b/chrome/browser/ui/webui/settings/password_manager_handler.cc
+index 530986996f..185170f4fa 100644
+--- a/chrome/browser/ui/webui/settings/password_manager_handler.cc
++++ b/chrome/browser/ui/webui/settings/password_manager_handler.cc
+@@ -7,6 +7,10 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+ #include "chrome/browser/ui/chrome_pages.h"
++#include "chrome/common/webui_url_constants.h"
++#include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/web_contents.h"
++#include "url/gurl.h"
+ 
+ namespace settings {
+ 
+@@ -38,10 +42,19 @@ void PasswordManagerHandler::HandleShowPasswordManager(
+   CHECK_EQ(1U, args.size());
+   int page = args[0].GetInt();
+ 
++  content::WebContents* contents = web_ui()->GetWebContents();
+   BrowserWindowInterface* const current_browser =
+-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+-          web_ui()->GetWebContents());
+-  CHECK(current_browser);
++      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
++  // Argon's tabs belong to no Browser, so the page opens in place.
++  if (!current_browser) {
++    GURL url(PasswordManagerPage(page) == PasswordManagerPage::kCheckup
++                 ? chrome::kChromeUIPasswordManagerCheckupURL
++                 : chrome::kChromeUIPasswordManagerURL);
++    contents->GetController().LoadURL(url, content::Referrer(),
++                                      ui::PAGE_TRANSITION_AUTO_TOPLEVEL,
++                                      std::string());
++    return;
++  }
+ 
+   switch (PasswordManagerPage(page)) {
+     case PasswordManagerPage::kPasswords:
 diff --git a/components/constrained_window/constrained_window_views.cc b/components/constrained_window/constrained_window_views.cc
 index cd235694d9..d9c29fc8a3 100644
 --- a/components/constrained_window/constrained_window_views.cc

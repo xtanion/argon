@@ -19,6 +19,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         self.spaces = spaces
         self.activeIndex = min(max(0, activeIndex), spaces.count - 1)
         let window = BrowserWindow()
+        window.embedsTrafficLights = true
         super.init(window: window)
         window.delegate = self
         root.sidebarHidden = !Preferences.showSidebarOnLaunch

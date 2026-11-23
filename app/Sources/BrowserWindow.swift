@@ -3,17 +3,20 @@ import AppKit
 // Window with the traffic lights centred on the sidebar's first row.
 @MainActor
 final class BrowserWindow: NSWindow {
-    private var buttonPitch: CGFloat?
+    private(set) var buttonPitch: CGFloat?
+    // Captured at init: once buttons live in the sidebar, standardWindowButton(_:) can return those instead.
+    private var titlebarButtons: [NSButton] = []
 
     // In full screen the traffic lights move to the system title bar, so nothing is reserved for them.
     var trafficLightsMaxX: CGFloat {
         if styleMask.contains(.fullScreen) { return -2 }
-        let width = standardWindowButton(.zoomButton)?.frame.width ?? 14
+        let width = titlebarButtons.last?.frame.width ?? 14
         return Metrics.trafficLightInset + 2 * (buttonPitch ?? 20) + width
     }
     var trafficLightsHidden = false { didSet { if trafficLightsHidden != oldValue { positionTrafficLights() } } }
-    var trafficLightOffset: NSPoint = .zero { didSet { if trafficLightOffset != oldValue { positionTrafficLights() } } }
-    var trafficLightSlide: CGFloat = 0 { didSet { if trafficLightSlide != oldValue { positionTrafficLights() } } }
+    // The main window draws its own buttons inside the sidebar so they move with it; the real ones only
+    // show in full screen, where AppKit puts them in the system title bar.
+    var embedsTrafficLights = false { didSet { positionTrafficLights() } }
     var isTranslucent = false {
         didSet {
             guard isTranslucent != oldValue else { return }
@@ -37,6 +40,7 @@ final class BrowserWindow: NSWindow {
         appearance = NSAppearance(named: .darkAqua)
         minSize = NSSize(width: 640, height: 420)
         collectionBehavior.insert(.fullScreenPrimary)
+        titlebarButtons = [.closeButton, .miniaturizeButton, .zoomButton].compactMap { standardWindowButton($0) }
     }
 
     // Chromium leaves mouse navigation to the embedder on macOS. Plain mice send side buttons 3 and 4;
@@ -66,15 +70,15 @@ final class BrowserWindow: NSWindow {
     }
 
     func positionTrafficLights() {
-        let types: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
-        let buttons = types.compactMap { standardWindowButton($0) }
+        let buttons = titlebarButtons
         guard buttons.count == 3, let container = buttons[0].superview?.superview else { return }
         if buttonPitch == nil {
             buttonPitch = buttons[1].frame.minX - buttons[0].frame.minX
             (contentView as? RootView)?.sidebar.needsLayout = true
         }
-        for button in buttons { button.isHidden = trafficLightsHidden }
-        guard !styleMask.contains(.fullScreen) else { return }
+        let fullScreen = styleMask.contains(.fullScreen)
+        for button in buttons { button.isHidden = trafficLightsHidden || (embedsTrafficLights && !fullScreen) }
+        guard !fullScreen else { return }
         let height = Metrics.titlebarHeight
         var frame = container.frame
         if frame.height != height || frame.minY != self.frame.height - height {
@@ -84,8 +88,8 @@ final class BrowserWindow: NSWindow {
         }
         for (index, button) in buttons.enumerated() {
             let origin = NSPoint(
-                x: Metrics.trafficLightInset + trafficLightOffset.x + trafficLightSlide + CGFloat(index) * (buttonPitch ?? 20),
-                y: (height - button.frame.height) / 2 - trafficLightOffset.y
+                x: Metrics.trafficLightInset + CGFloat(index) * (buttonPitch ?? 20),
+                y: (height - button.frame.height) / 2
             )
             if button.frame.origin != origin { button.setFrameOrigin(origin) }
         }
@@ -293,7 +297,6 @@ final class RootView: NSView {
     private var dockProgress: CGFloat = 1
     private var dockFromPeek = false
     private var dockTicker: FrameTicker?
-    private var lightsTicker: FrameTicker?
     var contentFullscreen = false { didSet { needsLayout = true; card.isFullBleed = contentFullscreen } }
     var frameless = false { didSet { if frameless != oldValue { needsLayout = true } } }
     private(set) var frameColor: NSColor = Palette.ink
@@ -492,8 +495,6 @@ final class RootView: NSView {
         slide.duration = 0.22
         slide.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
         layer.add(slide, forKey: "peek")
-        (window as? BrowserWindow)?.trafficLightSlide = peekOffset
-        followPeekWithTrafficLights(skipFirst: true)
     }
 
     private func schedulePeekHide() {
@@ -544,24 +545,6 @@ final class RootView: NSView {
         slide.isRemovedOnCompletion = false
         layer.add(slide, forKey: "peek")
         CATransaction.commit()
-        followPeekWithTrafficLights()
-    }
-
-    private func followPeekWithTrafficLights(skipFirst: Bool = false) {
-        lightsTicker?.stop()
-        let follow = { [weak self] () -> Bool in
-            guard let self, let window = self.window as? BrowserWindow, let layer = self.sidebar.layer,
-                  layer.animation(forKey: "peek") != nil else {
-                (self?.window as? BrowserWindow)?.trafficLightSlide = 0
-                self?.lightsTicker = nil
-                return false
-            }
-            let x = (layer.presentation() ?? layer).value(forKeyPath: "transform.translation.x") as? CGFloat
-            window.trafficLightSlide = x ?? 0
-            return true
-        }
-        guard skipFirst || follow() else { return }
-        lightsTicker = FrameTicker(view: self) { _ in follow() }
     }
 
     private func styleSidebar(floating: Bool) {
@@ -583,14 +566,81 @@ final class RootView: NSView {
 
     private func updateChrome() {
         guard let window = window as? BrowserWindow else { return }
-        let visible = !sidebar.isHidden && !contentFullscreen
-        window.trafficLightOffset = visible ? sidebar.frame.origin : .zero
-        window.trafficLightsHidden = !visible
+        window.trafficLightsHidden = sidebar.isHidden || contentFullscreen
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         (window as? BrowserWindow)?.isTranslucent = shownOpacity < 1
         updateChrome()
+    }
+}
+
+// Close, minimise and zoom buttons that live in an ordinary view, so they move with the sidebar.
+@MainActor
+final class WindowButtonsView: NSView {
+    private let buttons: [NSButton]
+    private var hovered = false
+    private var observers: [NSObjectProtocol] = []
+
+    override init(frame: NSRect) {
+        let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+        buttons = [.closeButton, .miniaturizeButton, .zoomButton].compactMap { NSWindow.standardWindowButton($0, for: style) }
+        super.init(frame: frame)
+        buttons.forEach(addSubview)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    var fittingWidth: CGFloat {
+        guard let last = buttons.last else { return 0 }
+        return CGFloat(buttons.count - 1) * pitch + last.frame.width
+    }
+
+    private var pitch: CGFloat { (window as? BrowserWindow)?.buttonPitch ?? 20 }
+
+    override func layout() {
+        super.layout()
+        for (index, button) in buttons.enumerated() {
+            button.setFrameOrigin(NSPoint(x: CGFloat(index) * pitch, y: ((bounds.height - button.frame.height) / 2).rounded()))
+        }
+    }
+
+    // AppKit asks the buttons' superview whether to draw the glyphs on all three while one is hovered.
+    @objc(_mouseInGroup:) func mouseInGroup(_ button: NSButton) -> Bool { hovered }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHovered(true) }
+    override func mouseExited(with event: NSEvent) { setHovered(false) }
+
+    private func setHovered(_ value: Bool) {
+        hovered = value
+        buttons.forEach { $0.needsDisplay = true }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        guard let window else { return }
+        let names: [Notification.Name] = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+                                          NSWindow.didBecomeMainNotification, NSWindow.didResignMainNotification]
+        observers = names.map {
+            NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    if self?.window?.isKeyWindow == false { self?.setHovered(false) }
+                    self?.buttons.forEach { $0.needsDisplay = true }
+                }
+            }
+        }
+        needsLayout = true
     }
 }

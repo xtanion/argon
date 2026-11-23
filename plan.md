@@ -166,6 +166,10 @@ ArgonCore (//argon_core, inside Chromium Framework.framework)
 - Motion, accessibility (VoiceOver, focus order), memory pressure and tab
   discarding, energy
 
+## Pipeline (next features)
+1. [ ] Live folders: sidebar folders that fill and refresh themselves from a
+   source (for example GitHub PRs and issues, or an RSS feed)
+
 ## Performance and polish rules
 
 - AppKit for the tab list, sidebar and address bar dropdown; SwiftUI only for

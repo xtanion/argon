@@ -1,7 +1,7 @@
 import AppKit
 
 @MainActor
-final class LittleWindowController: NSWindowController, NSWindowDelegate, BrowserTabObserver {
+final class LittleWindowController: NSWindowController, NSWindowDelegate, BrowserTabObserver, CommandBarHost {
     private static var open: [LittleWindowController] = []
     static var profilesInUse: Set<String> { Set(open.compactMap { $0.tab.tab?.profile.identifier }) }
     private static let defaultSize = NSSize(width: 920, height: 660)
@@ -54,15 +54,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         root.spacesButton.action = { [weak self] in self?.toggleSpacePicker() }
         root.copyButton.action = { [weak self] in self?.copyURL(nil) }
         root.backButton.action = { [weak self] in self?.tab.tab?.goBack() }
-        root.address.onClick = { [weak self] in
-            guard let self else { return }
-            self.root.beginEditing(self.tab.url?.absoluteString ?? "")
-        }
-        root.onSubmit = { [weak self] text in
-            guard let self, let page = self.tab.tab, let url = AddressInput.url(from: text, profile: page.profile) else { return }
-            page.load(url)
-            page.focus()
-        }
+        root.address.onClick = { [weak self] in self?.openLocation(nil) }
         refreshHeader()
     }
 
@@ -274,7 +266,9 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         LittleLauncher.toggle(browser: browser)
     }
 
-    @objc func closeTab(_ sender: Any?) { window?.performClose(sender) }
+    @objc func closeTab(_ sender: Any?) {
+        if root.commandBar != nil { dismissCommandBar() } else { window?.performClose(sender) }
+    }
     @objc func goBack(_ sender: Any?) { tab.tab?.goBack() }
     @objc func goForward(_ sender: Any?) { tab.tab?.goForward() }
     @objc func reloadPage(_ sender: Any?) { tab.tab?.reload() }
@@ -297,7 +291,13 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
     }
 
     @objc func newTab(_ sender: Any?) { forward { $0.newTab(sender) } }
-    @objc func openLocation(_ sender: Any?) { forward { $0.openLocation(sender) } }
+    @objc func openLocation(_ sender: Any?) {
+        guard root.commandBar == nil else { return }
+        let bar = CommandBarView(mode: .editURL, initialText: tab.url?.absoluteString ?? "", frameColor: space.frameColor)
+        bar.controller = self
+        root.commandBar = bar
+        bar.activate()
+    }
     @objc func newSpace(_ sender: Any?) { forward { $0.newSpace(sender) } }
     @objc func showHistory(_ sender: Any?) { forward { $0.showHistory(sender) } }
     @objc func toggleDownloads(_ sender: Any?) { forward { $0.toggleDownloads(sender) } }
@@ -310,6 +310,31 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
     }
 
     // MARK: BrowserTabObserver
+
+    var commandBarProfile: Profile? { tab.tab?.profile }
+    var activeTab: BrowserTab? { tab }
+
+    func tabsInRecentOrder() -> [(tab: BrowserTab, space: Space)] { browser?.tabsInRecentOrder() ?? [] }
+
+    func commandBar(_ bar: CommandBarView, open url: URL) {
+        dismissCommandBar()
+        tab.tab?.load(url)
+    }
+
+    func commandBar(_ bar: CommandBarView, switchTo other: BrowserTab) {
+        dismissCommandBar()
+        guard other !== tab else { return }
+        browser?.select(other)
+        browser?.bringToFront()
+    }
+
+    func commandBarOpenBlank() { dismissCommandBar() }
+
+    func dismissCommandBar() {
+        guard root.commandBar != nil else { return }
+        root.commandBar = nil
+        tab.tab?.focus()
+    }
 
     func browserTabDidChange(_ tab: BrowserTab) { refreshHeader() }
 
@@ -349,15 +374,20 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
 }
 
 @MainActor
-final class LittleRootView: NSView, NSTextFieldDelegate {
+final class LittleRootView: NSView {
     let card = ContentCardView()
     let backButton = IconButton(symbol: "chevron.left", size: 13, weight: .medium, toolTip: "Back")
     let address = LittleAddressView()
     let profileLabel = NSTextField.sidebarLabel("", font: .inter(11, weight: .semibold), color: Palette.subtle)
     let hostLabel = NSTextField.sidebarLabel("", font: .inter(12, weight: .medium), color: Palette.pillText)
     let copyButton = IconButton(symbol: "link", size: 12, toolTip: "Copy Link")
-    var onSubmit: ((String) -> Void)?
-    private let editor = NSTextField()
+    var commandBar: CommandBarView? {
+        didSet {
+            oldValue?.removeFromSuperview()
+            if let commandBar { addSubview(commandBar) }
+            needsLayout = true
+        }
+    }
     let openButton = LittleOpenButton()
     let spacesButton = LittleChevronButton()
     private let profilePill = NSView()
@@ -382,17 +412,7 @@ final class LittleRootView: NSView, NSTextFieldDelegate {
         profilePill.addSubview(profileIcon)
         profilePill.addSubview(profileLabel)
         backButton.isHidden = true
-        editor.isBordered = false
-        editor.drawsBackground = false
-        editor.focusRingType = .none
-        editor.font = .inter(12, weight: .medium)
-        editor.textColor = Palette.pillText
-        editor.cell?.isScrollable = true
-        editor.cell?.wraps = false
-        editor.cell?.lineBreakMode = .byClipping
-        editor.isHidden = true
-        editor.delegate = self
-        for view in [profilePill, hostLabel, editor, copyButton] as [NSView] { address.addSubview(view) }
+        for view in [profilePill, hostLabel, copyButton] as [NSView] { address.addSubview(view) }
         for view in [card, backButton, address, openButton, spacesButton] as [NSView] { addSubview(view) }
     }
 
@@ -455,45 +475,12 @@ final class LittleRootView: NSView, NSTextFieldDelegate {
         copyButton.frame = NSRect(x: aw - 4 - 24, y: (height - 24) / 2, width: 24, height: 24)
         let side = max(profilePill.frame.maxX, aw - copyButton.frame.minX) + 8
         hostLabel.frame = NSRect(x: side, y: (height - 16) / 2, width: max(0, aw - 2 * side), height: 16)
-        let editorX = profilePill.frame.maxX + 8
-        editor.frame = NSRect(x: editorX, y: (height - 17) / 2, width: max(0, copyButton.frame.minX - 6 - editorX), height: 17)
 
         card.frame = NSRect(x: 0, y: header, width: w, height: max(0, bounds.height - header))
         if let picker { picker.place(below: spacesButton.frame, in: bounds) }
         if let toast { toast.setFrameOrigin(toastOrigin(for: toast)) }
+        commandBar?.frame = bounds
     }
-
-    func beginEditing(_ text: String) {
-        editor.stringValue = text
-        editor.isHidden = false
-        hostLabel.isHidden = true
-        window?.makeFirstResponder(editor)
-        editor.currentEditor()?.selectAll(nil)
-    }
-
-    private func endEditing() {
-        guard !editor.isHidden else { return }
-        editor.isHidden = true
-        hostLabel.isHidden = false
-    }
-
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-        switch selector {
-        case #selector(NSResponder.insertNewline(_:)):
-            let text = editor.stringValue
-            endEditing()
-            onSubmit?(text)
-            return true
-        case #selector(NSResponder.cancelOperation(_:)):
-            endEditing()
-            window?.makeFirstResponder(card)
-            return true
-        default:
-            return false
-        }
-    }
-
-    func controlTextDidEndEditing(_ notification: Notification) { endEditing() }
 
     func showPicker(_ picker: LittleSpacePicker) {
         self.picker = picker

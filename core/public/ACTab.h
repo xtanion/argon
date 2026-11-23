@@ -12,6 +12,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class ACPasswordOffer;
+@class ACPermissionRequest;
 @class ACProfile;
 @class ACTab;
 
@@ -21,6 +22,14 @@ typedef NS_ENUM(NSInteger, ACTabOpenDisposition) {
   ACTabOpenDispositionPopup,
   ACTabOpenDispositionWindow,
 } NS_SWIFT_NAME(TabOpenDisposition);
+
+typedef NS_OPTIONS(NSUInteger, ACPermissionKinds) {
+  ACPermissionKindCamera = 1 << 0,
+  ACPermissionKindMicrophone = 1 << 1,
+  ACPermissionKindLocation = 1 << 2,
+  ACPermissionKindNotifications = 1 << 3,
+  ACPermissionKindOther = 1 << 4,
+} NS_SWIFT_NAME(PermissionKinds);
 
 NS_SWIFT_UI_ACTOR
 NS_SWIFT_NAME(TabDelegate)
@@ -55,6 +64,14 @@ NS_SWIFT_NAME(TabDelegate)
 - (void)tab:(ACTab*)tab didOfferPassword:(ACPasswordOffer*)offer;
 // The offer was replaced or its tab went away before it was answered.
 - (void)tab:(ACTab*)tab didWithdrawPasswordOffer:(ACPasswordOffer*)offer;
+// The page asked for permissions, such as the camera or location. Answer
+// with one of the request's methods. Without this method the request appears
+// as a sheet.
+- (void)tab:(ACTab*)tab didRequestPermission:(ACPermissionRequest*)request;
+// The request was decided elsewhere, or its tab was hidden, navigated or
+// closed. A hidden tab asks again when it is shown.
+- (void)tab:(ACTab*)tab
+    didWithdrawPermissionRequest:(ACPermissionRequest*)request;
 @end
 
 AC_OBJC_EXPORT
@@ -71,6 +88,35 @@ NS_SWIFT_NAME(PasswordOffer)
 - (void)save;
 - (void)notNow;
 - (void)neverForThisSite;
+
+- (instancetype)init NS_UNAVAILABLE;
+
+@end
+
+AC_OBJC_EXPORT
+NS_SWIFT_UI_ACTOR
+NS_SWIFT_NAME(PermissionRequest)
+@interface ACPermissionRequest : NSObject
+
+// The requesting site, without the scheme for https.
+@property(readonly, copy) NSString* site;
+@property(readonly) ACPermissionKinds kinds;
+// Chrome's wording for each request, such as "Use your MIDI devices".
+@property(readonly, copy) NSArray<NSString*>* descriptions;
+// The requested kinds macOS has turned off for Argon. Granting them would not
+// help, so offer `openSystemSettings` instead.
+@property(readonly) ACPermissionKinds blockedBySystem;
+// NO once answered or withdrawn; the answer methods then do nothing.
+@property(readonly, getter=isPending) BOOL pending;
+
+- (void)allow;
+- (void)allowThisTime;
+- (void)block;
+// Closes the request without deciding; the site may ask again.
+- (void)notNow;
+// Opens the macOS privacy pane for the first blocked kind and closes the
+// request.
+- (void)openSystemSettings;
 
 - (instancetype)init NS_UNAVAILABLE;
 

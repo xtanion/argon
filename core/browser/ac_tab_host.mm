@@ -142,12 +142,17 @@ ACTabHost::ACTabHost(ACTab* owner,
   favicon::ContentFaviconDriver::FromWebContents(contents_.get())
       ->AddObserver(this);
 
-  if (auto* permissions =
-          permissions::PermissionRequestManager::FromWebContents(
-              contents_.get())) {
-    permissions->set_view_factory_for_testing(
-        base::BindRepeating(&ACPermissionPrompt::Create));
-  }
+  // Chrome creates the request manager in TabFeatures, which only runs for
+  // Browser tabs. Without it every site permission request is dismissed.
+  permissions::PermissionRequestManager::CreateForWebContents(contents_.get());
+  permissions::PermissionRequestManager::FromWebContents(contents_.get())
+      ->set_view_factory_for_testing(base::BindRepeating(
+          [](ACTabHost* host, content::WebContents* web_contents,
+             permissions::PermissionPrompt::Delegate* delegate) {
+            return ACPermissionPrompt::Create(host->owner_, web_contents,
+                                              delegate);
+          },
+          base::Unretained(this)));
 
   web_modal::WebContentsModalDialogManager::CreateForWebContents(
       contents_.get());

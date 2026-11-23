@@ -107,7 +107,10 @@ int ACMain(int argc, char** argv, id<ACApplicationDelegate> delegate) {
       std::string("--disable-blink-features=") + kDisabledAIWebAPIs;
   args.push_back(disabled.c_str());
   // Tab sleep discards pages in place; off by default outside Android.
-  args.push_back("--enable-features=WebContentsDiscard");
+  // Without a Browser window the old startup tracking can wait for its three
+  // minute failsafe, holding back BEST_EFFORT work such as extension installs.
+  args.push_back(
+      "--enable-features=WebContentsDiscard,ImprovedStartupBestEffortDelay");
   args.push_back(blink_disabled.c_str());
   args.push_back(nullptr);
 

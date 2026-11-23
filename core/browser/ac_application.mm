@@ -2,6 +2,7 @@
 // You can use, redistribute, and/or modify this source code under
 // the terms of the GPL-3.0 license that can be found in the LICENSE file.
 
+#import "argon_core/browser/ac_default_extensions.h"
 #import "argon_core/browser/ac_internal.h"
 #import "argon_core/browser/ac_passwords_ui.h"
 
@@ -187,6 +188,7 @@ void InterceptOpenURLs() {
   if (it != _profiles.end()) {
     return it->second;
   }
+  argon_core::AcknowledgeDefaultExtensions(profile);
   ACProfile* wrapper = [[ACProfile alloc] initWithProfile:profile];
   _profiles[profile] = wrapper;
   return wrapper;

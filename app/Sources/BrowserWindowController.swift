@@ -1053,11 +1053,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         root.showToast("Press \u{2318}Q again to quit", duration: duration)
     }
 
-    // Links from other apps follow the link rules, then open in Little Argon or the active space.
+    // Links from other apps go to a tab that already has them open, then follow
+    // the link rules, then open in Little Argon or the active space.
     func open(_ urls: [URL]) {
         var openedHere = false
         for url in urls {
-            if let rule = LinkRouter.rule(for: url), let space = spaces.first(where: { $0.id == rule.spaceID }) {
+            if let existing = existingTab(for: url) {
+                select(existing)
+                openedHere = true
+            } else if let rule = LinkRouter.rule(for: url), let space = spaces.first(where: { $0.id == rule.spaceID }) {
                 openTab(url, in: space)
                 openedHere = true
             } else if LinkRouter.destination == .littleArgon, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
@@ -1078,6 +1082,28 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         var frame = window.convertToScreen(card.convert(card.bounds, to: nil))
         frame.size.height += titlebar
         return frame
+    }
+
+    private func existingTab(for url: URL) -> BrowserTab? {
+        func key(_ url: URL) -> String? {
+            guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+            components.fragment = nil
+            components.scheme = components.scheme?.lowercased()
+            components.host = components.host?.lowercased()
+            if components.path.hasSuffix("/") { components.path.removeLast() }
+            return components.string
+        }
+        guard let target = key(url) else { return nil }
+        let ordered = [activeSpace] + spaces.filter { $0 !== activeSpace }
+        for space in ordered {
+            if let tab = space.allTabs.first(where: { $0.url.flatMap(key) == target }) { return tab }
+        }
+        return nil
+    }
+
+    func profileTitle(_ identifier: String) -> String {
+        let names = spaces.filter { $0.profileIdentifier == identifier }.map(\.name)
+        return names.isEmpty ? identifier : names.joined(separator: ", ")
     }
 
     func bringToFront() {
@@ -1282,6 +1308,22 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     func browserTab(_ tab: BrowserTab, didOfferPassword offer: PasswordOffer) { passwordOffers.present(offer) }
 
     func browserTab(_ tab: BrowserTab, didWithdrawPasswordOffer offer: PasswordOffer) { passwordOffers.withdraw(offer) }
+
+    private lazy var permissions: PermissionPresenter = {
+        let presenter = PermissionPresenter { [weak self] card in self?.presentPermission(card) }
+        presenter.onChange = { [weak self] open in self?.root.sidebar.setPermissionOpen(open) }
+        return presenter
+    }()
+
+    func browserTab(_ tab: BrowserTab, didRequestPermission request: PermissionRequest) { permissions.present(request) }
+
+    func browserTab(_ tab: BrowserTab, didWithdrawPermissionRequest request: PermissionRequest) { permissions.withdraw(request) }
+
+    private func presentPermission(_ card: PermissionCard) {
+        card.fillColor = root.toastFill
+        let page = root.card.frame
+        card.present(in: root, anchor: root.sidebar.permissionAnchor, fallback: NSPoint(x: page.minX + 12, y: page.minY + 12))
+    }
 
     func browserTab(_ tab: BrowserTab, didUpdateFindMatches matches: Int, activeMatch: Int) {
         guard tab === displayedTab else { return }

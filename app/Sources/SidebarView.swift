@@ -308,6 +308,10 @@ final class SidebarView: NSView {
 
     func showCopiedFeedback() { pill.showCopied() }
 
+    var permissionAnchor: NSView? { isHidden || window == nil ? nil : pill.controlsButton }
+
+    func setPermissionOpen(_ open: Bool) { pill.controlsOpen = open || siteControls != nil }
+
     private var siteControls: SiteControlsPanel?
     private var siteControlsClosedAt: CFTimeInterval = 0
 

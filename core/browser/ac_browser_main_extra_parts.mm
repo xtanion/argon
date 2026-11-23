@@ -4,6 +4,7 @@
 
 #include "argon_core/browser/ac_browser_main_extra_parts.h"
 
+#include "argon_core/browser/ac_default_extensions.h"
 #include "argon_core/browser/ac_internal.h"
 
 namespace argon_core {
@@ -11,6 +12,15 @@ namespace argon_core {
 ACBrowserMainExtraParts::ACBrowserMainExtraParts() = default;
 
 ACBrowserMainExtraParts::~ACBrowserMainExtraParts() = default;
+
+void ACBrowserMainExtraParts::PreProfileInit() {
+  WriteDefaultExtensionFiles();
+}
+
+void ACBrowserMainExtraParts::PostProfileInit(Profile* profile,
+                                              bool is_initial_profile) {
+  AcknowledgeDefaultExtensions(profile);
+}
 
 void ACBrowserMainExtraParts::PostBrowserStart() {
   NotifyApplicationDidStart();

@@ -11,6 +11,8 @@ protocol BrowserTabObserver: AnyObject {
     func browserTabDidChangeMedia(_ tab: BrowserTab)
     func browserTab(_ tab: BrowserTab, didOfferPassword offer: PasswordOffer)
     func browserTab(_ tab: BrowserTab, didWithdrawPasswordOffer offer: PasswordOffer)
+    func browserTab(_ tab: BrowserTab, didRequestPermission request: PermissionRequest)
+    func browserTab(_ tab: BrowserTab, didWithdrawPermissionRequest request: PermissionRequest)
 }
 
 // A sidebar tab. The web page is created lazily, so restored tabs cost nothing
@@ -170,6 +172,14 @@ final class BrowserTab: NSObject, TabDelegate {
 
     func tab(_ tab: Tab, didWithdrawPasswordOffer offer: PasswordOffer) {
         observer?.browserTab(self, didWithdrawPasswordOffer: offer)
+    }
+
+    func tab(_ tab: Tab, didRequestPermission request: PermissionRequest) {
+        if let observer { observer.browserTab(self, didRequestPermission: request) } else { request.notNow() }
+    }
+
+    func tab(_ tab: Tab, didWithdrawPermissionRequest request: PermissionRequest) {
+        observer?.browserTab(self, didWithdrawPermissionRequest: request)
     }
 
     func tab(_ tab: Tab, didRequestFullscreen fullscreen: Bool) {

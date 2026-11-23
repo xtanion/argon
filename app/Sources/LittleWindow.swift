@@ -47,13 +47,22 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         if let view = tab.tab?.view { root.card.show(view) }
         root.setFrameColor(space.frameColor)
         window.appearance = NSAppearance(named: space.frameColor.isDarkFrame ? .darkAqua : .aqua)
-        root.profileLabel.stringValue = space.profileIdentifier
+        root.profileLabel.stringValue = browser.profileTitle(space.profileIdentifier)
         root.openButton.spaceName = space.name
         root.openButton.accent = Palette.accent(hue: space.hue, custom: space.customColor, on: space.frameColor)
         root.openButton.action = { [weak self] in self?.openInBrowser(space: nil) }
         root.spacesButton.action = { [weak self] in self?.toggleSpacePicker() }
         root.copyButton.action = { [weak self] in self?.copyURL(nil) }
         root.backButton.action = { [weak self] in self?.tab.tab?.goBack() }
+        root.address.onClick = { [weak self] in
+            guard let self else { return }
+            self.root.beginEditing(self.tab.url?.absoluteString ?? "")
+        }
+        root.onSubmit = { [weak self] text in
+            guard let self, let page = self.tab.tab, let url = AddressInput.url(from: text, profile: page.profile) else { return }
+            page.load(url)
+            page.focus()
+        }
         refreshHeader()
     }
 
@@ -331,16 +340,24 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
     func browserTab(_ tab: BrowserTab, didOfferPassword offer: PasswordOffer) { passwordOffers.present(offer) }
 
     func browserTab(_ tab: BrowserTab, didWithdrawPasswordOffer offer: PasswordOffer) { passwordOffers.withdraw(offer) }
+
+    private lazy var permissions = PermissionPresenter { [weak self] card in self?.root.showPermission(card) }
+
+    func browserTab(_ tab: BrowserTab, didRequestPermission request: PermissionRequest) { permissions.present(request) }
+
+    func browserTab(_ tab: BrowserTab, didWithdrawPermissionRequest request: PermissionRequest) { permissions.withdraw(request) }
 }
 
 @MainActor
-final class LittleRootView: NSView {
+final class LittleRootView: NSView, NSTextFieldDelegate {
     let card = ContentCardView()
     let backButton = IconButton(symbol: "chevron.left", size: 13, weight: .medium, toolTip: "Back")
     let address = LittleAddressView()
     let profileLabel = NSTextField.sidebarLabel("", font: .inter(11, weight: .semibold), color: Palette.subtle)
     let hostLabel = NSTextField.sidebarLabel("", font: .inter(12, weight: .medium), color: Palette.pillText)
     let copyButton = IconButton(symbol: "link", size: 12, toolTip: "Copy Link")
+    var onSubmit: ((String) -> Void)?
+    private let editor = NSTextField()
     let openButton = LittleOpenButton()
     let spacesButton = LittleChevronButton()
     private let profilePill = NSView()
@@ -365,7 +382,17 @@ final class LittleRootView: NSView {
         profilePill.addSubview(profileIcon)
         profilePill.addSubview(profileLabel)
         backButton.isHidden = true
-        for view in [profilePill, hostLabel, copyButton] as [NSView] { address.addSubview(view) }
+        editor.isBordered = false
+        editor.drawsBackground = false
+        editor.focusRingType = .none
+        editor.font = .inter(12, weight: .medium)
+        editor.textColor = Palette.pillText
+        editor.cell?.isScrollable = true
+        editor.cell?.wraps = false
+        editor.cell?.lineBreakMode = .byClipping
+        editor.isHidden = true
+        editor.delegate = self
+        for view in [profilePill, hostLabel, editor, copyButton] as [NSView] { address.addSubview(view) }
         for view in [card, backButton, address, openButton, spacesButton] as [NSView] { addSubview(view) }
     }
 
@@ -393,6 +420,11 @@ final class LittleRootView: NSView {
     }
 
     private var toastFill: NSColor { Palette.opaque(Palette.surface, on: frameColor, appearance: effectiveAppearance) }
+
+    func showPermission(_ card: PermissionCard) {
+        card.fillColor = toastFill
+        card.present(in: self, anchor: address, fallback: NSPoint(x: card.frame.minX, y: address.frame.maxY + 4))
+    }
 
     override func layout() {
         super.layout()
@@ -423,11 +455,45 @@ final class LittleRootView: NSView {
         copyButton.frame = NSRect(x: aw - 4 - 24, y: (height - 24) / 2, width: 24, height: 24)
         let side = max(profilePill.frame.maxX, aw - copyButton.frame.minX) + 8
         hostLabel.frame = NSRect(x: side, y: (height - 16) / 2, width: max(0, aw - 2 * side), height: 16)
+        let editorX = profilePill.frame.maxX + 8
+        editor.frame = NSRect(x: editorX, y: (height - 17) / 2, width: max(0, copyButton.frame.minX - 6 - editorX), height: 17)
 
         card.frame = NSRect(x: 0, y: header, width: w, height: max(0, bounds.height - header))
         if let picker { picker.place(below: spacesButton.frame, in: bounds) }
         if let toast { toast.setFrameOrigin(toastOrigin(for: toast)) }
     }
+
+    func beginEditing(_ text: String) {
+        editor.stringValue = text
+        editor.isHidden = false
+        hostLabel.isHidden = true
+        window?.makeFirstResponder(editor)
+        editor.currentEditor()?.selectAll(nil)
+    }
+
+    private func endEditing() {
+        guard !editor.isHidden else { return }
+        editor.isHidden = true
+        hostLabel.isHidden = false
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            let text = editor.stringValue
+            endEditing()
+            onSubmit?(text)
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            endEditing()
+            window?.makeFirstResponder(card)
+            return true
+        default:
+            return false
+        }
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) { endEditing() }
 
     func showPicker(_ picker: LittleSpacePicker) {
         self.picker = picker
@@ -462,6 +528,9 @@ final class LittleRootView: NSView {
 
 @MainActor
 final class LittleAddressView: NSView {
+    var onClick: (() -> Void)?
+    private var dragged = false
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -476,12 +545,16 @@ final class LittleAddressView: NSView {
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() { layer?.backgroundColor = Palette.surface.cgColor }
 
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            window?.performZoom(nil)
-        } else {
-            window?.performDrag(with: event)
-        }
+    override func mouseDown(with event: NSEvent) { dragged = false }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard !dragged else { return }
+        dragged = true
+        window?.performDrag(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if !dragged { onClick?() }
     }
 }
 

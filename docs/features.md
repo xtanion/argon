@@ -62,10 +62,14 @@
 ## Chrome compatibility
 
 - **Extensions** from the Chrome Web Store.
+- **uBlock Origin Lite** comes installed. Remove it from Extensions if you
+  don't want it; it won't come back.
 - **Passwords and autofill**, with offers to save and update logins.
 - **Passkeys** through your phone or a security key.
-- **Permissions**, camera and microphone prompts, HTTP auth, file uploads and
-  downloads, all using Chrome's own logic.
+- **Permissions**: camera, microphone, location and notification requests
+  appear as a card under the address pill. If macOS has turned one off for
+  Argon, the card links to the right pane in System Settings.
+- **HTTP auth, file uploads and downloads**, all using Chrome's own logic.
 
 ## Import
 

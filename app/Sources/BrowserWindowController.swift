@@ -362,6 +362,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         sidebar.update(spaces: spaces, activeIndex: index, commandBarOpen: false, preview: true)
     }
 
+    func commitSpaceSwipe(to index: Int) {
+        guard spaces.indices.contains(index), index != activeIndex else { return }
+        switchToSpace(index)
+        showActiveTab()
+        scheduleSave()
+    }
+
     func previewSpaceColor(toward index: Int, progress: CGFloat) {
         guard spaces.indices.contains(index) else { return }
         let from = activeSpace.frameColor.usingColorSpace(.sRGB) ?? activeSpace.frameColor
@@ -373,10 +380,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
 
     func finishSpaceSwipe(to index: Int?) {
         if let index, spaces.indices.contains(index), index != activeIndex {
-            switchToSpace(index)
-            showActiveTab()
-            scheduleSave()
-        } else {
+            commitSpaceSwipe(to: index)
+        } else if index == nil {
             applyFrame()
         }
         refreshSidebar()

@@ -593,7 +593,10 @@ final class SidebarView: NSView {
         duration = max(0.12, min(0.32, duration))
         swipe = nil
         swipeSettling = true
-        if commit, let target = current.target { controller?.previewSpaceColor(toward: target, progress: 1) }
+        if commit, let target = current.target {
+            controller?.previewSpaceColor(toward: target, progress: 1)
+            controller?.commitSpaceSwipe(to: target)
+        }
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = Motion.reduced ? 0 : duration
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)

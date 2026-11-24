@@ -45,7 +45,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         window.contentView = root
         tab.observer = self
         if let view = tab.tab?.view { root.card.show(view) }
-        root.setFrameColor(space.frameColor)
+        root.setFrameColor(space.frameColor, opacity: CGFloat(space.opacity))
         window.appearance = NSAppearance(named: space.frameColor.isDarkFrame ? .darkAqua : .aqua)
         root.profileLabel.stringValue = browser.profileTitle(space.profileIdentifier)
         root.openButton.spaceName = space.name
@@ -376,6 +376,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
 @MainActor
 final class LittleRootView: NSView {
     let card = ContentCardView()
+    private let backdrop = FrameBackdropView()
     let backButton = IconButton(symbol: "chevron.left", size: 13, weight: .medium, toolTip: "Back")
     let address = LittleAddressView()
     let profileLabel = NSTextField.sidebarLabel("", font: .inter(11, weight: .semibold), color: Palette.subtle)
@@ -413,7 +414,7 @@ final class LittleRootView: NSView {
         profilePill.addSubview(profileLabel)
         backButton.isHidden = true
         for view in [profilePill, hostLabel, copyButton] as [NSView] { address.addSubview(view) }
-        for view in [card, backButton, address, openButton, spacesButton] as [NSView] { addSubview(view) }
+        for view in [backdrop, card, backButton, address, openButton, spacesButton] as [NSView] { addSubview(view) }
     }
 
     @available(*, unavailable)
@@ -421,9 +422,14 @@ final class LittleRootView: NSView {
 
     override var isFlipped: Bool { true }
 
-    func setFrameColor(_ color: NSColor) {
+    func setFrameColor(_ color: NSColor, opacity: CGFloat = 1) {
         frameColor = color
-        layer?.backgroundColor = color.cgColor
+        let opacity = min(max(opacity, Palette.minimumOpacity), 1)
+        let translucent = opacity < 1
+        backdrop.blursBehindWindow = translucent
+        backdrop.tintColor = translucent ? Palette.frameWash(color, opacity: opacity).cgColor : color.cgColor
+        card.solidBase = translucent ? color : nil
+        (window as? BrowserWindow)?.isTranslucent = translucent
         toast?.fillColor = toastFill
         updateColors()
     }
@@ -450,6 +456,7 @@ final class LittleRootView: NSView {
         super.layout()
         let header = Metrics.titlebarHeight
         let w = bounds.width
+        backdrop.frame = bounds
         let inset: CGFloat = 8
         let lightsMaxX = (window as? BrowserWindow)?.trafficLightsMaxX ?? 67
         let center = header / 2

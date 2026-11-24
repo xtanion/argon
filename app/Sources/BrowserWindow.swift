@@ -389,7 +389,8 @@ final class RootView: NSView {
         let edge = frameless ? 0 : inset
         let fullCard = bounds.insetBy(dx: edge, dy: edge)
         let allCorners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
-        card.roundedCorners = frameless ? [] : allCorners
+        let sidebarTopCorner: CACornerMask = sidebarOnRight ? .layerMaxXMaxYCorner : .layerMinXMaxYCorner
+        card.roundedCorners = !frameless ? allCorners : (sidebarPeeking || dockProgress == 0 ? [] : sidebarTopCorner)
         backdrop.frame = bounds
         if contentFullscreen {
             card.frame = bounds
@@ -398,7 +399,7 @@ final class RootView: NSView {
             sidebar.frame = mirrored(floating)
         } else {
             let docked = NSRect(x: 0, y: 0, width: w, height: h)
-            let dockedCard = NSRect(x: w, y: edge, width: bounds.width - w - edge, height: h - 2 * edge)
+            let dockedCard = NSRect(x: w, y: inset, width: bounds.width - w - edge, height: h - inset - edge)
             let hidden = dockFromPeek ? floating : NSRect(x: -w, y: 0, width: w, height: h)
             sidebar.frame = mirrored(Self.lerp(hidden, docked, dockProgress))
             card.frame = mirrored(Self.lerp(fullCard, dockedCard, dockProgress).integral)

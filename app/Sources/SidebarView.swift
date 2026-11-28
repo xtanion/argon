@@ -19,8 +19,9 @@ final class SidebarView: NSView {
     private let tabScroll = SidebarScrollView()
     private let tabList = TabListView()
     private let spaceBar = SpaceBarView()
-    private let nowPlaying = NowPlayingView()
-    private let updateChip = UpdateChipView()
+    private let nowPlaying = NowPlayingWidget()
+    private let updateWidget = UpdateWidget()
+    private var widgets: [SidebarWidget] { [updateWidget, nowPlaying] }
     private let spaceClip = FlippedView()
     private let spaceContent = FlippedView()
     private let favoritesGrid = FavoritesGridView()
@@ -90,9 +91,14 @@ final class SidebarView: NSView {
         tabList.sidebar = self
         spaceBar.sidebar = self
         nowPlaying.sidebar = self
-        nowPlaying.isHidden = true
-        updateChip.onLayoutChange = { [weak self] in self?.needsLayout = true }
-        updateChip.onExpandChange = { [weak self] in self?.animateUpdateChip() }
+        for widget in widgets {
+            widget.isHidden = !widget.isPresented
+            widget.onPresentationChange = { [weak self, weak widget] in
+                guard let widget else { return }
+                self?.presentationChanged(widget)
+            }
+            widget.onExpansionChange = { [weak self] in self?.relayout(animated: true, duration: 0.22) }
+        }
         favoritesGrid.sidebar = self
         favoritesGrid.list = tabList
         spaceHeader.onToggle = { [weak self] in self?.controller?.togglePinnedSection() }
@@ -106,7 +112,7 @@ final class SidebarView: NSView {
         for view in [favoritesGrid, spaceHeader, tabScroll] as [NSView] {
             spaceContent.addSubview(view)
         }
-        for view in [windowButtons, toggleButton, backButton, forwardButton, reloadButton, pill, spaceClip, listBottomEdge, spaceBar, nowPlaying, updateChip] as [NSView] {
+        for view in [windowButtons, toggleButton, backButton, forwardButton, reloadButton, pill, spaceClip, listBottomEdge, spaceBar] + widgets as [NSView] {
             addSubview(view)
         }
     }
@@ -131,23 +137,6 @@ final class SidebarView: NSView {
         tabList.revealsClear = hovered
     }
 
-    private func updateChipFrame() -> NSRect {
-        let p = Metrics.padding
-        let height = updateChip.isHidden ? 0 : updateChip.displayHeight
-        return NSRect(x: p, y: spaceBar.frame.minY - height, width: bounds.width - 2 * p, height: height)
-    }
-
-    // The expanded card grows upward over the tab list instead of pushing it.
-    private func animateUpdateChip() {
-        let target = updateChipFrame()
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Motion.reduced ? 0 : 0.22
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
-            context.allowsImplicitAnimation = true
-            updateChip.animator().frame = target
-        }
-    }
-
     override func layout() {
         super.layout()
         layer?.shadowPath = floatingTint == nil ? nil
@@ -169,11 +158,14 @@ final class SidebarView: NSView {
         pill.frame = NSRect(x: p, y: Metrics.titlebarHeight, width: w - 2 * p, height: Metrics.rowHeight)
         spaceBar.frame = NSRect(x: 0, y: bounds.height - Metrics.spaceBarHeight, width: w, height: Metrics.spaceBarHeight)
         let clipTop = pill.frame.maxY
-        let chipHeight = updateChip.isHidden ? 0 : UpdateChipView.height
-        updateChip.frame = updateChipFrame()
-        let aboveChip = updateChip.isHidden ? spaceBar.frame.minY : spaceBar.frame.minY - chipHeight - 6
-        nowPlaying.frame = NSRect(x: p, y: aboveChip - NowPlayingView.expandedHeight, width: w - 2 * p, height: NowPlayingView.expandedHeight)
-        let clipBottom = nowPlaying.tab == nil ? aboveChip : aboveChip - NowPlayingView.collapsedHeight - 6
+        var widgetBottom = spaceBar.frame.minY
+        var clipBottom = spaceBar.frame.minY
+        for widget in widgets where widget.isPresented {
+            let height = widget.displayHeight
+            widget.frame = NSRect(x: p, y: widgetBottom - height, width: w - 2 * p, height: height)
+            widgetBottom -= height + SidebarWidget.spacing
+            clipBottom -= SidebarWidget.rowHeight + SidebarWidget.spacing
+        }
         spaceClip.frame = NSRect(x: 0, y: clipTop, width: w, height: max(0, clipBottom - clipTop))
         if swipe == nil, !swipeSettling { spaceContent.frame = spaceClip.bounds }
         outgoingSnapshot?.frame.size = spaceClip.bounds.size
@@ -231,11 +223,11 @@ final class SidebarView: NSView {
         favoritesGrid.refresh(tab)
     }
 
-    func relayout(animated: Bool) {
+    func relayout(animated: Bool, duration: TimeInterval = 0.25) {
         needsLayout = true
         guard animated, !Motion.reduced, window != nil else { return }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.25
+            context.duration = duration
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
             context.allowsImplicitAnimation = true
             layoutSubtreeIfNeeded()
@@ -339,21 +331,24 @@ final class SidebarView: NSView {
     }
     func toggleDownloads() { spaceBar.toggleDownloads() }
 
-    func updateNowPlaying(_ tab: BrowserTab?) {
-        let wasShown = nowPlaying.tab != nil
-        nowPlaying.configure(tab)
-        guard wasShown != (tab != nil) else { return }
-        if tab == nil { nowPlaying.collapse() }
-        nowPlaying.isHidden = false
+    func updateNowPlaying(_ tab: BrowserTab?) { nowPlaying.configure(tab) }
+
+    private func presentationChanged(_ widget: SidebarWidget) {
+        let shown = widget.isPresented
         let animated = !Motion.reduced && window != nil
-        nowPlaying.alphaValue = tab == nil ? 1 : 0
+        if shown, widget.isHidden {
+            widget.alphaValue = 0
+            widget.isHidden = false
+            needsLayout = true
+            layoutSubtreeIfNeeded()
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = animated ? 0.2 : 0
-            nowPlaying.animator().alphaValue = tab == nil ? 0 : 1
-        } completionHandler: { [weak self] in
+            widget.animator().alphaValue = shown ? 1 : 0
+        } completionHandler: { [weak widget] in
             MainActor.assumeIsolated {
-                guard let self, self.nowPlaying.tab == nil else { return }
-                self.nowPlaying.isHidden = true
+                guard let widget, !widget.isPresented else { return }
+                widget.isHidden = true
             }
         }
         relayout(animated: animated)
@@ -1471,6 +1466,7 @@ final class TabRowView: HoverView {
 
     private let iconView = NSImageView()
     private let spinner = LoadingRing()
+    private let spinnerHost = NSView()
     private let titleLabel = NSTextField.sidebarLabel()
     private let closeButton = IconButton(symbol: "xmark", size: 11, toolTip: "Close Tab")
     private let audioButton = IconButton(symbol: "speaker.wave.2", size: 13, toolTip: "Mute Tab")
@@ -1491,7 +1487,8 @@ final class TabRowView: HoverView {
             page.isMuted.toggle()
             self?.refresh()
         }
-        for view in [iconView, spinner, titleLabel, audioButton, closeButton] as [NSView] { addSubview(view) }
+        spinnerHost.addSubview(spinner)
+        for view in [iconView, spinnerHost, titleLabel, audioButton, closeButton] as [NSView] { addSubview(view) }
     }
 
     override func layout() {
@@ -1499,10 +1496,14 @@ final class TabRowView: HoverView {
         let h = bounds.height
         let icon = Metrics.faviconSize
         iconView.frame = NSRect(x: 10 + indent, y: (h - icon) / 2, width: icon, height: icon)
-        spinner.frame = iconView.frame
         let closeSize = Metrics.iconFrame
         closeButton.frame = NSRect(x: bounds.width - 6 - closeSize, y: (h - closeSize) / 2, width: closeSize, height: closeSize)
-        let titleRight = closeButton.isHidden ? bounds.width - 10 : closeButton.frame.minX - 4
+        let ring: CGFloat = 14
+        spinnerHost.frame = NSRect(x: closeButton.frame.midX - ring / 2, y: (h - ring) / 2, width: ring, height: ring)
+        spinner.frame = spinnerHost.bounds
+        spinnerHost.isHidden = !closeButton.isHidden
+        let trailingBusy = !closeButton.isHidden || tab.isLoading
+        let titleRight = trailingBusy ? closeButton.frame.minX - 4 : bounds.width - 10
         var titleX = Metrics.titleX + indent
         if !audioButton.isHidden {
             audioButton.frame = NSRect(x: titleX, y: (h - closeSize) / 2, width: closeSize, height: closeSize)
@@ -1523,21 +1524,16 @@ final class TabRowView: HoverView {
             audioButton.toolTip = muted ? "Unmute Tab" : "Mute Tab"
         }
         if tab.isLoading {
-            iconView.isHidden = true
             spinner.start(progress: CGFloat(tab.loadProgress))
+        } else if spinner.isAnimating {
+            spinner.finish {}
+        }
+        if let favicon = tab.favicon {
+            iconView.image = favicon
+            iconView.contentTintColor = nil
         } else {
-            if spinner.isAnimating {
-                spinner.finish { [weak self] in self?.iconView.isHidden = false }
-            } else {
-                iconView.isHidden = false
-            }
-            if let favicon = tab.favicon {
-                iconView.image = favicon
-                iconView.contentTintColor = nil
-            } else {
-                iconView.image = .symbol("globe", size: 13)
-                iconView.contentTintColor = Palette.icon
-            }
+            iconView.image = .symbol("globe", size: 13)
+            iconView.contentTintColor = Palette.icon
         }
         needsLayout = true
     }
@@ -3145,7 +3141,7 @@ final class SiteControlsPanel: OverlayPanel {
     }
 
     private func updateZoom() {
-        // Older ArgonCore builds lack zoomPercent; show the controls without a value.
+        // Older StoneCore builds lack zoomPercent; show the controls without a value.
         let percent = tab.flatMap { $0.responds(to: #selector(getter: Tab.zoomPercent)) ? $0.zoomPercent : nil } ?? 100
         zoomLabel?.stringValue = tab?.responds(to: #selector(getter: Tab.zoomPercent)) == false ? "Zoom" : "\(percent)%"
         guard let zoomLabel, let resetZoomButton else { return }
@@ -3284,7 +3280,7 @@ final class SecurityPill: HoverView {
         case "https": ("lock.fill", "Secure")
         case "http": ("exclamationmark.triangle.fill", "Not Secure")
         case "file": ("doc.fill", "Local File")
-        case "chrome", "about": ("gearshape.fill", "Argon Page")
+        case "chrome", "about": ("gearshape.fill", "Stone Page")
         default: ("info.circle.fill", "Site Info")
         }
         label = .sidebarLabel(text, font: .systemFont(ofSize: 13, weight: .medium), color: Palette.text)
@@ -3321,169 +3317,5 @@ final class SecurityPill: HoverView {
     override func mouseUp(with event: NSEvent) {
         Motion.release(self)
         if bounds.contains(convert(event.locationInWindow, from: nil)) { action() }
-    }
-}
-
-// Media controls for a page playing in another tab. Hovering grows the card
-// upward to show the title, picture in picture and close.
-@MainActor
-final class NowPlayingView: NSView {
-    static let collapsedHeight: CGFloat = 34
-    static let expandedHeight: CGFloat = 62
-
-    weak var sidebar: SidebarView?
-    private(set) var tab: BrowserTab?
-    private let card = CALayer()
-    private let titleLabel = NSTextField.sidebarLabel("", font: .systemFont(ofSize: 12.5, weight: .medium))
-    private let pipButton = IconButton(symbol: "pip", size: 12, toolTip: "Picture in Picture")
-    private let closeButton = IconButton(symbol: "xmark", size: 11, toolTip: "Close")
-    private let iconButton = IconButton(symbol: "globe", size: 13, toolTip: "Go to Tab")
-    private let previousButton = IconButton(symbol: "backward.end.fill", size: 12, toolTip: "Previous")
-    private let playButton = IconButton(symbol: "pause.fill", size: 14)
-    private let nextButton = IconButton(symbol: "forward.end.fill", size: 12, toolTip: "Next")
-    private let muteButton = IconButton(symbol: "speaker.fill", size: 12)
-    private var expanded = false
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        layer?.masksToBounds = false
-        card.cornerRadius = Metrics.cardRadius
-        card.cornerCurve = .continuous
-        layer?.addSublayer(card)
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.alphaValue = 0
-        pipButton.alphaValue = 0
-        closeButton.alphaValue = 0
-        for view in [titleLabel, pipButton, closeButton, iconButton, previousButton, playButton, nextButton, muteButton] as [NSView] {
-            addSubview(view)
-        }
-        iconButton.action = { [weak self] in self?.goToTab() }
-        previousButton.action = { [weak self] in self?.tab?.tab?.previousTrack() }
-        nextButton.action = { [weak self] in self?.tab?.tab?.nextTrack() }
-        playButton.action = { [weak self] in
-            guard let page = self?.tab?.tab else { return }
-            if page.isPlayingMedia { page.pauseMedia() } else { page.playMedia() }
-        }
-        muteButton.action = { [weak self] in
-            guard let page = self?.tab?.tab else { return }
-            page.isMuted.toggle()
-        }
-        pipButton.action = { [weak self] in self?.tab?.tab?.togglePictureInPicture() }
-        closeButton.action = { [weak self] in self?.sidebar?.controller?.dismissNowPlaying() }
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var isFlipped: Bool { true }
-    override var mouseDownCanMoveWindow: Bool { false }
-
-    private var visibleCardRect: NSRect {
-        let height = expanded ? Self.expandedHeight : Self.collapsedHeight
-        return NSRect(x: 0, y: bounds.height - height, width: bounds.width, height: height)
-    }
-
-    func configure(_ tab: BrowserTab?) {
-        self.tab = tab
-        guard let tab, let page = tab.tab else { return }
-        titleLabel.stringValue = page.mediaTitle.isEmpty ? tab.title : page.mediaTitle
-        iconButton.setImage(Self.favicon(tab.favicon))
-        playButton.setSymbol(page.isPlayingMedia ? "pause.fill" : "play.fill", size: 14)
-        playButton.toolTip = page.isPlayingMedia ? "Pause" : "Play"
-        previousButton.isEnabled = page.canPlayPreviousTrack
-        nextButton.isEnabled = page.canPlayNextTrack
-        muteButton.setSymbol(page.isMuted ? "speaker.slash.fill" : "speaker.fill", size: 12)
-        muteButton.toolTip = page.isMuted ? "Unmute" : "Mute"
-        pipButton.isEnabled = page.canEnterPictureInPicture || page.isInPictureInPicture
-    }
-
-    private static func favicon(_ image: NSImage?) -> NSImage {
-        guard let image else { return .symbol("globe", size: 13) ?? NSImage() }
-        let size = NSSize(width: 16, height: 16)
-        return NSImage(size: size, flipped: false) { rect in
-            image.draw(in: rect)
-            return true
-        }
-    }
-
-    private func goToTab() {
-        guard let tab else { return }
-        sidebar?.select(tab)
-    }
-
-    override func layout() {
-        super.layout()
-        let w = bounds.width
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        card.frame = visibleCardRect
-        var fill: CGColor?
-        effectiveAppearance.performAsCurrentDrawingAppearance { fill = Palette.nowPlaying.cgColor }
-        card.backgroundColor = fill
-        CATransaction.commit()
-        let size: CGFloat = 26
-        let rowY = bounds.height - Self.collapsedHeight + (Self.collapsedHeight - size) / 2
-        let controls = [iconButton, previousButton, playButton, nextButton, muteButton]
-        for (index, button) in controls.enumerated() {
-            let center = w * (CGFloat(index) + 0.5) / CGFloat(controls.count)
-            button.frame = NSRect(x: (center - size / 2).rounded(), y: rowY, width: size, height: size)
-        }
-        let topY = bounds.height - Self.expandedHeight + 6
-        closeButton.frame = NSRect(x: w - 6 - 24, y: topY, width: 24, height: 24)
-        pipButton.frame = closeButton.frame.offsetBy(dx: -26, dy: 0)
-        let labelHeight = titleLabel.intrinsicContentSize.height
-        titleLabel.frame = NSRect(x: 12, y: topY + (24 - labelHeight) / 2, width: max(0, pipButton.frame.minX - 18), height: labelHeight)
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        needsLayout = true
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard !isHidden, visibleCardRect.contains(convert(point, from: superview)) else { return nil }
-        return super.hitTest(point) ?? self
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
-    }
-
-    override func mouseEntered(with event: NSEvent) { trackHover(event) }
-    override func mouseMoved(with event: NSEvent) { trackHover(event) }
-    override func mouseExited(with event: NSEvent) { setExpanded(false) }
-
-    private func trackHover(_ event: NSEvent) {
-        setExpanded(visibleCardRect.contains(convert(event.locationInWindow, from: nil)))
-    }
-
-    func collapse() { setExpanded(false, animated: false) }
-
-    private func setExpanded(_ value: Bool, animated: Bool = true) {
-        guard value != expanded else { return }
-        expanded = value
-        let duration = animated && !Motion.reduced ? 0.2 : 0
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(duration)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1))
-        card.frame = visibleCardRect
-        CATransaction.commit()
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration
-            for view in [titleLabel, pipButton, closeButton] as [NSView] {
-                view.animator().alphaValue = value ? 1 : 0
-            }
-        }
-    }
-
-    override func mouseDown(with event: NSEvent) {}
-
-    override func mouseUp(with event: NSEvent) {
-        guard event.clickCount == 1 else { return }
-        let point = convert(event.locationInWindow, from: nil)
-        if titleLabel.frame.insetBy(dx: 0, dy: -4).contains(point) { goToTab() }
     }
 }

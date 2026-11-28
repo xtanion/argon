@@ -299,9 +299,9 @@ final class IconPickerCell: HoverView {
 }
 
 enum SpaceGlyph: String {
-    case planet = "argon.planet"
-    case pizza = "argon.pizza"
-    case skull = "argon.skull"
+    case planet = "stone.planet"
+    case pizza = "stone.pizza"
+    case skull = "stone.skull"
 
     func image(size: CGFloat) -> NSImage {
         let side = (size * 1.2).rounded()

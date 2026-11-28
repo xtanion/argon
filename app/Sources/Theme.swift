@@ -63,7 +63,8 @@ enum Palette {
     static let faint = white(0x66)
     static let hairline = white(0x0F)
     static let divider = white(0x24)
-    static let nowPlaying = dynamic(dark: NSColor(white: 0, alpha: 0.42)) {
+    static let widgetBorder = white(0x14)
+    static let widget = dynamic(dark: NSColor(white: 0, alpha: 0.42)) {
         frameIsVeryLight ? NSColor(white: 0, alpha: 0.06) : NSColor(white: 1, alpha: 0.55)
     }
     static let favorite = dynamic(dark: NSColor(white: 1, alpha: 0.09)) {

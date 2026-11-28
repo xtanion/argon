@@ -25,12 +25,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
         root.sidebarHidden = !Preferences.showSidebarOnLaunch
         root.setSidebarOnRight(Preferences.sidebarOnRight, animated: false)
         window.contentView = root
-        window.setFrameAutosaveName("ArgonBrowserWindow")
-        if !window.setFrameUsingName("ArgonBrowserWindow") { window.center() }
+        window.setFrameAutosaveName("StoneBrowserWindow")
+        if !window.setFrameUsingName("StoneBrowserWindow") { window.center() }
         sidebar.controller = self
         root.resizeHandle.onDrag = { [weak self] x in self?.resizeSidebar(to: x) }
         root.resizeHandle.onEnd = { [weak self] in self?.endSidebarResize() }
-        root.sidebarWidth = CGFloat(UserDefaults.standard.double(forKey: "ArgonSidebarWidth")).nonZero ?? Metrics.sidebarWidth
+        root.sidebarWidth = CGFloat(UserDefaults.standard.double(forKey: "StoneSidebarWidth")).nonZero ?? Metrics.sidebarWidth
         for space in spaces {
             for tab in space.allTabs { tab.observer = self }
         }
@@ -948,7 +948,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     func captureScreenshot() {
         guard let browserTab = activeTab, let page = browserTab.tab else { return }
         guard page.responds(to: #selector(Tab.captureVisibleContent(completion:))) else {
-            root.showToast("Capture needs a newer ArgonCore build", icon: "exclamationmark.circle")
+            root.showToast("Capture needs a newer StoneCore build", icon: "exclamationmark.circle")
             return
         }
         page.captureVisibleContent { [weak self] image in
@@ -1060,7 +1060,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     }
 
     // Links from other apps go to a tab that already has them open, then follow
-    // the link rules, then open in Little Argon or the active space.
+    // the link rules, then open in Little Stone or the active space.
     func open(_ urls: [URL]) {
         var openedHere = false
         for url in urls {
@@ -1070,7 +1070,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             } else if let rule = LinkRouter.rule(for: url), let space = spaces.first(where: { $0.id == rule.spaceID }) {
                 openTab(url, in: space)
                 openedHere = true
-            } else if LinkRouter.destination == .littleArgon, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+            } else if LinkRouter.destination == .littleStone, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
                       let profile = activeSpace.profile {
                 LittleWindowController.open(url, space: activeSpace, profile: profile, browser: self)
             } else {
@@ -1262,7 +1262,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
     }
 
     private func endSidebarResize() {
-        UserDefaults.standard.set(Double(root.sidebarWidth), forKey: "ArgonSidebarWidth")
+        UserDefaults.standard.set(Double(root.sidebarWidth), forKey: "StoneSidebarWidth")
     }
 
     // MARK: BrowserTabObserver
@@ -1279,7 +1279,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, Brows
             return
         }
         let space = spaces[index]
-        if disposition == .foreground || disposition == .background, LittleArgon.modifierClickHeld {
+        if disposition == .foreground || disposition == .background, LittleStone.modifierClickHeld {
             LittleWindowController.open(newTab, space: space, browser: self)
             return
         }

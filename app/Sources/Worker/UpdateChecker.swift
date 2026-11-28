@@ -9,7 +9,7 @@ struct AvailableUpdate: Sendable {
 
 struct UpdateCheckJob: BackgroundJob {
     static let jobIdentifier = "updates"
-    static let repository = "xtanion/argon"
+    static let repository = "xtanion/stone"
 
     private struct Release: Decodable, Sendable {
         let tagName: String
@@ -69,7 +69,7 @@ struct UpdateCheckJob: BackgroundJob {
 
 @MainActor
 enum UpdatePrompt {
-    private static let skippedVersionKey = "ArgonUpdateSkippedVersion"
+    private static let skippedVersionKey = "StoneUpdateSkippedVersion"
 
     static func checkNow() {
         BrowserWindowController.current?.showToast(ToastView(message: "Checking for Updates\u{2026}", icon: "arrow.triangle.2.circlepath", duration: 10))
@@ -84,14 +84,14 @@ enum UpdatePrompt {
         guard let update else {
             let version = UpdateCheckJob().currentVersion.map { " \($0)" } ?? ""
             controller.showToast(ToastView(message: "You're up to date", icon: "checkmark.circle", duration: 3)
-                .withToolTip("Argon\(version) is the newest version."))
+                .withToolTip("Stone\(version) is the newest version."))
             return
         }
         let actions = [
             ToastAction(title: "Later") { _ in },
             ToastAction(title: "Update", isPrimary: true) { _ in Updater.shared.apply() },
         ]
-        controller.showToast(ToastView(message: "Argon \(update.version) is available", icon: "arrow.down.circle",
+        controller.showToast(ToastView(message: "Stone \(update.version) is available", icon: "arrow.down.circle",
                                        actions: actions, duration: 8))
     }
 

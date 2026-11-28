@@ -1,4 +1,4 @@
-# Copyright 2026 The Argon Authors
+# Copyright 2026 The Stone Authors
 # You can use, redistribute, and/or modify this source code under
 # the terms of the GPL-3.0 license that can be found in the LICENSE file.
 
@@ -10,38 +10,38 @@ config("public_headers") {
 
 source_set("core") {
   sources = [
-    "browser/ac_application.mm",
-    "browser/ac_autocomplete.mm",
-    "browser/ac_browser_main_extra_parts.h",
-    "browser/ac_browser_main_extra_parts.mm",
-    "browser/ac_content_browser_client.cc",
-    "browser/ac_content_browser_client.h",
-    "browser/ac_default_extensions.cc",
-    "browser/ac_default_extensions.h",
-    "browser/ac_download.mm",
-    "browser/ac_extension_windows.mm",
-    "browser/ac_import.mm",
-    "browser/ac_internal.h",
-    "browser/ac_passwords_ui.h",
-    "browser/ac_passwords_ui.mm",
-    "browser/ac_profile.mm",
-    "browser/ac_tab.mm",
-    "browser/ac_permission_prompt.h",
-    "browser/ac_permission_prompt.mm",
-    "browser/ac_tab_host.h",
-    "browser/ac_tab_host.mm",
+    "browser/st_application.mm",
+    "browser/st_autocomplete.mm",
+    "browser/st_browser_main_extra_parts.h",
+    "browser/st_browser_main_extra_parts.mm",
+    "browser/st_content_browser_client.cc",
+    "browser/st_content_browser_client.h",
+    "browser/st_default_extensions.cc",
+    "browser/st_default_extensions.h",
+    "browser/st_download.mm",
+    "browser/st_extension_windows.mm",
+    "browser/st_import.mm",
+    "browser/st_internal.h",
+    "browser/st_passwords_ui.h",
+    "browser/st_passwords_ui.mm",
+    "browser/st_profile.mm",
+    "browser/st_tab.mm",
+    "browser/st_permission_prompt.h",
+    "browser/st_permission_prompt.mm",
+    "browser/st_tab_host.h",
+    "browser/st_tab_host.mm",
   ]
   public = [
-    "public/ACApplication.h",
-    "public/ACAutocomplete.h",
-    "public/ACDownload.h",
-    "public/ACExtensionTabs.h",
-    "public/ACExport.h",
-    "public/ACImport.h",
-    "public/ACMain.h",
-    "public/ACProfile.h",
-    "public/ACTab.h",
-    "public/ArgonCore.h",
+    "public/STApplication.h",
+    "public/STAutocomplete.h",
+    "public/STDownload.h",
+    "public/STExtensionTabs.h",
+    "public/STExport.h",
+    "public/STImport.h",
+    "public/STMain.h",
+    "public/STProfile.h",
+    "public/STTab.h",
+    "public/StoneCore.h",
   ]
   public_configs = [ ":public_headers" ]
   friend = [ "//chrome:chrome_dll" ]

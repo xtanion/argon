@@ -5,7 +5,7 @@ enum AppIconStyle: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .blue: "Argon"
+        case .blue: "Stone"
         case .beijing: "Daybreak"
         case .tokyo: "Dusk"
         case .perth: "Sunset"
@@ -94,6 +94,11 @@ enum AppIcon {
             shape.fill()
             NSGraphicsContext.restoreGraphicsState()
 
+            if style == .blue {
+                drawLogo(in: tile, background: background)
+                return true
+            }
+
             NSGraphicsContext.saveGraphicsState()
             shape.addClip()
             let scale = tile.width / 1024
@@ -112,6 +117,66 @@ enum AppIcon {
             NSGraphicsContext.restoreGraphicsState()
             return true
         }
+    }
+}
+
+extension AppIcon {
+    static let logoBlue: UInt32 = 0x0A84FF
+    static let logoGreen: UInt32 = 0x30D158
+
+    // Same geometry as Resources/AppIcon.icon/Assets/logo-*.svg: a 480pt circle split by
+    // two channels into a blue middle band and green sides, at 1.25x from (212, 212) of the tile.
+    static func drawLogo(in tile: NSRect, background: NSColor) {
+        let unit = tile.width / 1024
+        func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+            NSPoint(x: tile.minX + (212 + x * 1.25) * unit, y: tile.minY + (212 + y * 1.25) * unit)
+        }
+        func channelA(_ path: NSBezierPath) {
+            path.line(to: p(276, 95))
+            path.curve(to: p(220, 150), controlPoint1: p(276, 135), controlPoint2: p(255, 150))
+            path.curve(to: p(162, 205), controlPoint1: p(185, 150), controlPoint2: p(162, 170))
+            path.line(to: p(162, 270))
+            path.curve(to: p(105, 325), controlPoint1: p(162, 305), controlPoint2: p(140, 325))
+            path.line(to: p(-20, 325))
+        }
+        func channelB(_ path: NSBezierPath) {
+            path.line(to: p(320, 225))
+            path.curve(to: p(276, 270), controlPoint1: p(290, 225), controlPoint2: p(276, 245))
+            path.curve(to: p(330, 330), controlPoint1: p(276, 300), controlPoint2: p(295, 315))
+            path.curve(to: p(376, 395), controlPoint1: p(360, 343), controlPoint2: p(376, 360))
+            path.line(to: p(376, 500))
+        }
+        let circleRect = NSRect(origin: p(0, 0), size: NSSize(width: 600 * unit, height: 600 * unit))
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(ovalIn: circleRect).addClip()
+        color(logoBlue).setFill()
+        circleRect.fill()
+        color(logoGreen).setFill()
+        let left = NSBezierPath()
+        left.move(to: p(276, -20))
+        channelA(left)
+        left.line(to: p(-20, -20))
+        left.close()
+        left.fill()
+        let right = NSBezierPath()
+        right.move(to: p(500, 225))
+        channelB(right)
+        right.line(to: p(500, 500))
+        right.close()
+        right.fill()
+        background.setStroke()
+        let a = NSBezierPath()
+        a.move(to: p(276, -20))
+        channelA(a)
+        let b = NSBezierPath()
+        b.move(to: p(500, 225))
+        channelB(b)
+        for channel in [a, b] {
+            channel.lineWidth = 42 * 1.25 * unit
+            channel.lineJoinStyle = .round
+            channel.stroke()
+        }
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
 
@@ -136,7 +201,7 @@ final class AppIconBanner: NSView {
         let title = NSTextField(labelWithString: "App Icon")
         title.font = .inter(13, weight: .semibold)
         title.textColor = .labelColor
-        let subtitle = NSTextField(labelWithString: "Shown in the Dock while Argon is running. Follows light and dark mode.")
+        let subtitle = NSTextField(labelWithString: "Shown in the Dock while Stone is running. Follows light and dark mode.")
         subtitle.font = SettingsStyle.subtitle
         subtitle.textColor = .secondaryLabelColor
 
@@ -186,7 +251,7 @@ final class AppIconBanner: NSView {
     private func sync() {
         let style = Preferences.appIcon
         for tile in tiles { tile.isSelected = tile.style == style }
-        let stops = style.gradient ?? [0x6E8BFE, 0x8FA6FE, 0xBFD0FF]
+        let stops = style.gradient ?? [AppIcon.logoGreen, AppIcon.logoBlue, AppIcon.logoGreen]
         let dark = Palette.isDark(effectiveAppearance)
         let picks = [stops[0], stops[stops.count / 2], stops[stops.count - 1]]
         CATransaction.begin()

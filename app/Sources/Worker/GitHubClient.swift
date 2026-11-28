@@ -47,7 +47,7 @@ actor GitHubClient {
         session = URLSession(configuration: configuration)
         let namespace = token.map { "user-" + Self.digest($0).prefix(16) } ?? "public"
         cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "Argon", isDirectory: true)
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "Stone", isDirectory: true)
             .appendingPathComponent("GitHub", isDirectory: true)
             .appendingPathComponent(namespace, isDirectory: true)
     }
@@ -73,7 +73,7 @@ actor GitHubClient {
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        request.setValue("Argon", forHTTPHeaderField: "User-Agent")
+        request.setValue("Stone", forHTTPHeaderField: "User-Agent")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let cached = cachedResponse(for: url)
         if let cached { request.setValue(cached.etag, forHTTPHeaderField: "If-None-Match") }

@@ -1,0 +1,11 @@
+# Copyright 2026 The Stone Authors
+# You can use, redistribute, and/or modify this source code under
+# the terms of the GPL-3.0 license that can be found in the LICENSE file.
+
+# Compiled into Chrome's framework library next to ChromeMainDelegate, which is
+# not a separate target.
+stone_core_app_sources = [
+  "//stone_core/app/st_main.mm",
+  "//stone_core/app/st_main_delegate.cc",
+  "//stone_core/app/st_main_delegate.h",
+]

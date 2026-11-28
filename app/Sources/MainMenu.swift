@@ -5,24 +5,24 @@ enum MainMenu {
     static func build() -> NSMenu {
         let main = NSMenu()
 
-        main.addSubmenu("Argon") { menu in
+        main.addSubmenu("Stone") { menu in
             menu.addItem(ClosureMenuItem("Check for Updates...") { UpdatePrompt.checkNow() })
             menu.addItem(.separator())
             menu.addItem(withTitle: "Settings...", action: #selector(BrowserWindowController.openSettings(_:)), keyEquivalent: ",")
             menu.addItem(.separator())
-            menu.addItem(withTitle: "Hide Argon", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+            menu.addItem(withTitle: "Hide Stone", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
             menu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
                 .keyEquivalentModifierMask = [.command, .option]
             menu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
             menu.addItem(.separator())
-            menu.addItem(ClosureMenuItem("Quit Argon") { QuitGuard.requestQuit() }.withKey("q"))
+            menu.addItem(ClosureMenuItem("Quit Stone") { QuitGuard.requestQuit() }.withKey("q"))
         }
 
         main.addSubmenu("File") { menu in
             menu.addItem(withTitle: "New Tab", action: #selector(BrowserWindowController.newTab(_:)), keyEquivalent: "t")
             menu.addItem(withTitle: "New Space", action: #selector(BrowserWindowController.newSpace(_:)), keyEquivalent: "n")
                 .keyEquivalentModifierMask = [.command, .shift]
-            menu.addItem(withTitle: "New Little Argon Window", action: #selector(BrowserWindowController.newLittleWindow(_:)), keyEquivalent: "n")
+            menu.addItem(withTitle: "New Little Stone Window", action: #selector(BrowserWindowController.newLittleWindow(_:)), keyEquivalent: "n")
                 .keyEquivalentModifierMask = [.command, .option]
             menu.addItem(withTitle: "Open File...", action: #selector(BrowserWindowController.openFile(_:)), keyEquivalent: "o")
             menu.addItem(withTitle: "Open in Another Space...", action: #selector(LittleWindowController.moveToSpace(_:)), keyEquivalent: "o")

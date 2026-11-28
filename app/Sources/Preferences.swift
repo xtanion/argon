@@ -2,14 +2,14 @@ import AppKit
 
 @MainActor
 enum Preferences {
-    private static let warnBeforeQuittingKey = "ArgonWarnBeforeQuitting"
-    private static let showSidebarOnLaunchKey = "ArgonShowSidebarOnLaunch"
-    private static let screenshotFolderKey = "ArgonScreenshotFolder"
-    private static let autoPictureInPictureKey = "ArgonAutoPictureInPicture"
-    private static let checkForUpdatesKey = "ArgonCheckForUpdates"
-    private static let sidebarOnRightKey = "ArgonSidebarOnRight"
-    private static let archiveAfterKey = "ArgonArchiveAfterHours"
-    private static let framelessKey = "ArgonFrameless"
+    private static let warnBeforeQuittingKey = "StoneWarnBeforeQuitting"
+    private static let showSidebarOnLaunchKey = "StoneShowSidebarOnLaunch"
+    private static let screenshotFolderKey = "StoneScreenshotFolder"
+    private static let autoPictureInPictureKey = "StoneAutoPictureInPicture"
+    private static let checkForUpdatesKey = "StoneCheckForUpdates"
+    private static let sidebarOnRightKey = "StoneSidebarOnRight"
+    private static let archiveAfterKey = "StoneArchiveAfterHours"
+    private static let framelessKey = "StoneFrameless"
 
     static var frameless: Bool {
         get { UserDefaults.standard.bool(forKey: framelessKey) }
@@ -34,8 +34,8 @@ enum Preferences {
     static let sleepChoices: [(minutes: Int, title: String)] = [(15, "15 Minutes"), (30, "30 Minutes"), (60, "1 Hour"), (120, "2 Hours"), (0, "Never")]
 
     static var sleepTabsAfterMinutes: Int {
-        get { UserDefaults.standard.object(forKey: "ArgonSleepTabsAfterMinutes") as? Int ?? 30 }
-        set { UserDefaults.standard.set(newValue, forKey: "ArgonSleepTabsAfterMinutes") }
+        get { UserDefaults.standard.object(forKey: "StoneSleepTabsAfterMinutes") as? Int ?? 30 }
+        set { UserDefaults.standard.set(newValue, forKey: "StoneSleepTabsAfterMinutes") }
     }
 
     static var sleepTabsAfter: TimeInterval? {
@@ -52,8 +52,8 @@ enum Preferences {
     }
 
     static var appIcon: AppIconStyle {
-        get { UserDefaults.standard.string(forKey: "ArgonAppIcon").flatMap(AppIconStyle.init(rawValue:)) ?? .blue }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: "ArgonAppIcon") }
+        get { UserDefaults.standard.string(forKey: "StoneAppIcon").flatMap(AppIconStyle.init(rawValue:)) ?? .blue }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "StoneAppIcon") }
     }
 
     static var checkForUpdates: Bool {
@@ -104,8 +104,8 @@ enum Preferences {
 }
 
 extension Notification.Name {
-    static let sidebarSideDidChange = Notification.Name("ArgonSidebarSideDidChange")
-    static let framelessDidChange = Notification.Name("ArgonFramelessDidChange")
+    static let sidebarSideDidChange = Notification.Name("StoneSidebarSideDidChange")
+    static let framelessDidChange = Notification.Name("StoneFramelessDidChange")
 }
 
 @MainActor

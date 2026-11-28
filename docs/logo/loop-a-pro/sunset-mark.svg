@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
+  <defs>
+    <mask id="under-main" maskUnits="userSpaceOnUse" x="-500" y="-500" width="2000" height="2000">
+      <rect x="-500" y="-500" width="2000" height="2000" fill="#fff"/>
+      <path d="M 203.8 880.0 L 278.0 582.3 A 135.0 135.0 0 0 1 529.5 554.1" fill="none" stroke="#000" stroke-width="130.0" stroke-linejoin="round"/>
+      <rect x="409.0" y="-500" width="2000" height="2000" fill="#fff"/>
+    </mask>
+    <mask id="under-accent" maskUnits="userSpaceOnUse" x="-500" y="-500" width="2000" height="2000">
+      <rect x="-500" y="-500" width="2000" height="2000" fill="#fff"/>
+      <path d="M 593.7 811.8 L 512.4 485.7" fill="none" stroke="#000" stroke-width="130.0" stroke-linecap="round"/>
+    </mask>
+  </defs>
+  <g transform="translate(500 500) scale(0.9779) translate(-487.4 -497.5)" fill="none" stroke-width="94.0" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 269.9 615.0 L 369.0 217.3 A 135.0 135.0 0 0 1 631.0 217.3 L 768.3 768.2 A 90.0 90.0 0 0 1 681.0 880.0 A 90.0 90.0 0 0 1 593.7 811.8 L 512.4 485.7" stroke="#F4914E" mask="url(#under-main)"/>
+    <path d="M 203.8 880.0 L 278.0 582.3 A 135.0 135.0 0 0 1 529.5 554.1" stroke="#A9C3F0" mask="url(#under-accent)"/>
+  </g>
+</svg>

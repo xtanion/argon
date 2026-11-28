@@ -15,7 +15,7 @@ extension PermissionRequest {
 
     var question: String {
         if systemBlocked {
-            return "macOS has turned off \(Self.name(of: blockedBySystem)) for Argon. Turn it on in System Settings, then reload the page."
+            return "macOS has turned off \(Self.name(of: blockedBySystem)) for Stone. Turn it on in System Settings, then reload the page."
         }
         let host = site.hasPrefix("http://") ? String(site.dropFirst(7)) : site
         return "Allow \(host) to \(phrase)?"

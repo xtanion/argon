@@ -28,7 +28,7 @@ enum ShortcutCatalog {
             menu.delegate?.menuNeedsUpdate?(menu)
             var entries: [ShortcutEntry] = []
             collect(menu, path: [top.title], into: &entries)
-            let title = top.title == "Argon" ? "App" : top.title
+            let title = top.title == "Stone" ? "App" : top.title
             if !entries.isEmpty { groups.append(ShortcutGroup(title: title, entries: entries)) }
         }
         return groups
@@ -339,7 +339,7 @@ final class ShortcutDetailView: NSView {
 
         let line = SettingsSeparator()
         let note = NSTextField(wrappingLabelWithString:
-            "To change a shortcut, add it for Argon in System Settings \u{203A} Keyboard \u{203A} Keyboard Shortcuts \u{203A} App Shortcuts, using the exact menu name.")
+            "To change a shortcut, add it for Stone in System Settings \u{203A} Keyboard \u{203A} Keyboard Shortcuts \u{203A} App Shortcuts, using the exact menu name.")
         note.font = SettingsStyle.subtitle
         note.textColor = .secondaryLabelColor
         let open = SettingsButton("Keyboard Settings\u{2026}") {

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Stone</string>
+	<string>Argon</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -29,7 +29,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Stone</string>
+	<string>Argon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -53,29 +53,29 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSLocationUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSPrincipalClass</key>
 	<string>BrowserCrApplication</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>Once Stone has access, websites will be able to ask you for access.</string>
+	<string>Once Argon has access, websites will be able to ask you for access.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 </dict>

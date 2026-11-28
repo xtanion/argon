@@ -19,7 +19,7 @@ final class TabArchive {
     private(set) var entries: [ArchivedTab] = []
 
     private let file: URL? = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-        .appendingPathComponent(Bundle.main.bundleIdentifier ?? "Stone", isDirectory: true)
+        .appendingPathComponent(Bundle.main.bundleIdentifier ?? "Argon", isDirectory: true)
         .appendingPathComponent("Archive.json")
 
     private init() {

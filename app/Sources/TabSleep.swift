@@ -82,7 +82,7 @@ final class TabSleep {
         page.discard()
     }
 
-    // A profile is idle when none of its spaces is active, no Little Stone
+    // A profile is idle when none of its spaces is active, no Little Argon
     // window uses it, nothing is downloading, and every page it had is closed or
     // discarded. After the idle period its pages close and it unloads.
     private func unloadIdleProfiles(in controller: BrowserWindowController, now: Date) {

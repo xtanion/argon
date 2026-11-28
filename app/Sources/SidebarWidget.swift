@@ -1,7 +1,8 @@
 import AppKit
 
-// A card stacked above the space bar. Its bottom row is always visible; hovering an
-// expandable widget grows the card upward over the tab list to reveal a header
+// A card stacked above the space bar. Its bottom row is always visible and has the same
+// shape in every widget: a primary button (icon and label) followed by trailing controls.
+// Hovering an expandable widget grows the card upward over the tab list to reveal a header
 // (title and accessory buttons) and an optional body between the header and the row.
 @MainActor
 class SidebarWidget: HoverView {
@@ -11,8 +12,10 @@ class SidebarWidget: HoverView {
     static let radius: CGFloat = 10
 
     let titleLabel = NSTextField.sidebarLabel("", font: .systemFont(ofSize: 12.5, weight: .medium))
+    let primaryButton = SidebarWidgetButton(symbol: "circle", title: "")
     private let progressFill = CALayer()
     private var accessories: [IconButton] = []
+    private var rowControls: [IconButton] = []
     private var bodyViews: [NSView] = []
     private(set) var isExpanded = false
     var onPresentationChange: (() -> Void)?
@@ -47,6 +50,7 @@ class SidebarWidget: HoverView {
         titleLabel.allowsExpansionToolTips = false
         titleLabel.alphaValue = 0
         addSubview(titleLabel)
+        addSubview(primaryButton)
     }
 
     @available(*, unavailable)
@@ -62,13 +66,19 @@ class SidebarWidget: HoverView {
         needsLayout = true
     }
 
+    func setRowControls(_ buttons: [IconButton]) {
+        rowControls.forEach { $0.removeFromSuperview() }
+        rowControls = buttons
+        buttons.forEach(addSubview)
+        needsLayout = true
+    }
+
     func addBodyView(_ view: NSView) {
         view.alphaValue = isExpanded ? 1 : 0
         bodyViews.append(view)
         addSubview(view)
     }
 
-    func layoutRow(in rect: NSRect) {}
     func layoutBody(in rect: NSRect) {}
     func titleClicked() {}
 
@@ -119,7 +129,19 @@ class SidebarWidget: HoverView {
         titleLabel.frame = NSRect(x: 12, y: header.minY + (header.height - labelHeight) / 2 + 2,
                                   width: max(0, x - 16), height: labelHeight)
         layoutBody(in: NSRect(x: 0, y: header.maxY, width: w, height: max(0, row.minY - header.maxY)))
-        layoutRow(in: row)
+        layoutRow(row)
+    }
+
+    private func layoutRow(_ row: NSRect) {
+        let size: CGFloat = 26
+        let y = row.minY + (row.height - size) / 2
+        var x = row.maxX - 4
+        for button in rowControls.reversed() {
+            x -= size
+            button.frame = NSRect(x: x, y: y, width: size, height: size)
+            x -= 2
+        }
+        primaryButton.frame = NSRect(x: 4, y: y, width: max(0, x - 4), height: size)
     }
 
     override func mouseDown(with event: NSEvent) {}
@@ -159,6 +181,10 @@ final class SidebarWidgetButton: HoverView {
 
     func setSymbol(_ symbol: String) {
         icon.image = .symbol(symbol, size: 13)
+    }
+
+    func setImage(_ image: NSImage) {
+        icon.image = image
     }
 
     override func updateLayer() {

@@ -2,7 +2,7 @@ import AppKit
 import Security
 
 extension Notification.Name {
-    static let updaterStateDidChange = Notification.Name("StoneUpdaterStateDidChange")
+    static let updaterStateDidChange = Notification.Name("ArgonUpdaterStateDidChange")
 }
 
 enum UpdateError: Error, LocalizedError {
@@ -16,7 +16,7 @@ enum UpdateError: Error, LocalizedError {
         switch self {
         case .noArchive: "This release has no update archive for this Mac."
         case .unpack: "The update couldn't be unpacked."
-        case .untrusted(let status): "The update isn't signed by the same developer as this copy of Stone (\(status))."
+        case .untrusted(let status): "The update isn't signed by the same developer as this copy of Argon (\(status))."
         case .notNewer: "The downloaded app isn't newer than this one."
         case .install(let reason): reason
         }
@@ -24,7 +24,7 @@ enum UpdateError: Error, LocalizedError {
 }
 
 // Downloads the release zip, checks it is signed like the running app, then
-// swaps the bundle in place from a helper that outlives Stone and relaunches it.
+// swaps the bundle in place from a helper that outlives Argon and relaunches it.
 @MainActor
 final class Updater {
     static let shared = Updater()
@@ -96,7 +96,7 @@ final class Updater {
     private func start(_ update: AvailableUpdate, archive: URL) {
         state = .downloading(update, 0)
         var request = URLRequest(url: archive)
-        request.setValue("Stone", forHTTPHeaderField: "User-Agent")
+        request.setValue("Argon", forHTTPHeaderField: "User-Agent")
         let task = URLSession.shared.downloadTask(with: request) { location, response, error in
             let staged: Result<URL, Error>
             if let location, (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? false {
@@ -151,7 +151,7 @@ final class Updater {
 
     nonisolated private static var stagingRoot: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return caches.appendingPathComponent(Bundle.main.bundleIdentifier ?? "Stone", isDirectory: true)
+        return caches.appendingPathComponent(Bundle.main.bundleIdentifier ?? "Argon", isDirectory: true)
             .appendingPathComponent("Update", isDirectory: true)
     }
 
@@ -160,7 +160,7 @@ final class Updater {
         try? fm.removeItem(at: stagingRoot)
         let directory = stagingRoot.appendingPathComponent(version.description, isDirectory: true)
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        let zip = directory.appendingPathComponent("Stone.zip")
+        let zip = directory.appendingPathComponent("Argon.zip")
         try fm.moveItem(at: location, to: zip)
         return zip
     }
@@ -225,7 +225,7 @@ final class Updater {
         fi
         /usr/bin/open "$2"
         """
-        let arguments = ["/bin/sh", "-c", script, "stone-update", String(getpid()), target.path, newApp.path, backup.path]
+        let arguments = ["/bin/sh", "-c", script, "argon-update", String(getpid()), target.path, newApp.path, backup.path]
 
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)

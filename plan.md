@@ -1,4 +1,4 @@
-# Stone: plan
+# Argon: plan
 
 Goal: an Arc-style browser for macOS. Our own native app (Swift + AppKit) owns the
 whole interface; Chromium provides the engine and Chrome's back-end services.
@@ -14,8 +14,8 @@ Chromium's window code. Arc ships no Chromium window code at all (no `BrowserVie
 ## Decisions (defaults, change any time)
 
 1. Interface: Swift + AppKit. SwiftUI only for small panels.
-2. Build: the app is an Xcode project; Chromium's build compiles StoneCore
-   (`//stone_core`) into `Chromium Framework.framework`, which the app embeds.
+2. Build: the app is an Xcode project; Chromium's build compiles ArgonCore
+   (`//argon_core`) into `Chromium Framework.framework`, which the app embeds.
 3. The old Views-based Helium work is on the `views-arc-ui` branch of the private
    `xtanion/helium-macos` repo (remote `xtanion`): `archive/views-arc-ui/`
    (`arc-sidebar.patch`, `series.merged`, `design.md`) and `patches/helium/ui/`.
@@ -26,27 +26,27 @@ Chromium's window code. Arc ships no Chromium window code at all (no `BrowserVie
 ## Layout
 
 ```
-stone/
+argon/
   plan.md
   design.md              interface spec (sidebar, spaces, address bar, motion)
-  core/                  Chromium-side code, mapped into the checkout as //stone_core
+  core/                  Chromium-side code, mapped into the checkout as //argon_core
     BUILD.gn
     app/                 startup, main parts, content client
     browser/             profiles, tabs, windows, delegates, prompts
     public/              Obj-C API (AC* classes) used by the Swift app
-  app/                   Xcode project: Stone.app (Swift + AppKit)
-  patches/stone/         Chromium changes Stone needs (embedder-hooks.patch)
+  app/                   Xcode project: Argon.app (Swift + AppKit)
+  patches/argon/         Chromium changes Argon needs (embedder-hooks.patch)
 
 ~/chromium/src           Chromium git checkout, pinned to 157.0.8103.38
-  stone_core -> ~/stone/core
+  argon_core -> ~/argon/core
   out/Core               build output (component build)
 ```
 
 ## Source
 
 - Checkout: depot_tools, `.gclient` pinned to `refs/tags/157.0.8103.38`,
-  `--no-history` to save disk. Today Stone runs on plain Chromium plus
-  `patches/stone/embedder-hooks.patch`.
+  `--no-history` to save disk. Today Argon runs on plain Chromium plus
+  `patches/argon/embedder-hooks.patch`.
 - Later: apply Helium's engine and privacy patches (ungoogled-chromium,
   helium/core and similar) with quilt, skipping ones that only touch
   `chrome/browser/ui/views`.
@@ -55,11 +55,11 @@ stone/
 ## Architecture
 
 ```
-Stone.app (Swift, AppKit)
+Argon.app (Swift, AppKit)
   sidebar, spaces, tab list, address bar, command bar, prompts, settings shell
         |  Obj-C API (core/public)
-StoneCore (//stone_core, inside Chromium Framework.framework)
-  stone_core: STApplication, STProfile, STTab, STAutocomplete, STDownload, delegates
+ArgonCore (//argon_core, inside Chromium Framework.framework)
+  argon_core: ACApplication, ACProfile, ACTab, ACAutocomplete, ACDownload, delegates
   Chrome back-end services reused as-is: profiles, history, autocomplete, search
   engines, bookmarks, downloads, passwords, autofill, permissions, extensions,
   site settings, WebUI pages (settings, history, downloads, extensions)
@@ -84,18 +84,18 @@ StoneCore (//stone_core, inside Chromium Framework.framework)
 ### M0: prototype and go/no-go (2-3 weeks)
 - [x] depot_tools, Chromium checkout at 157.0.8103.38, first build of `chrome` to
       confirm the toolchain (`out/Core`: release, component, symbol_level 0)
-- [x] `core/` skeleton: public Obj-C API (`STMain`, `STApplication`, `STProfile`,
-      `STTab`), main delegate, browser client, main extra parts, tab host
+- [x] `core/` skeleton: public Obj-C API (`ACMain`, `ACApplication`, `ACProfile`,
+      `ACTab`), main delegate, browser client, main extra parts, tab host
 - [x] `app/` skeleton: XcodeGen `project.yml`, Swift entry point, two-profile
       prototype window; type-checks under Swift 6
 - [x] Verify the skeleton against the checkout: `ChromeMainDelegate` constructor
       and GN target, `ProfileManager::CreateProfileAsync`, `KeepAliveOrigin`,
       `ProfileKeepAliveOrigin`, `WebContentsDelegate` signatures, what
       `ChromeMain` does on Mac beyond `ContentMain`
-- [x] `STMain` ships inside Chrome's framework library (`chrome_dll`). Engine
-      hook patch: `patches/stone/embedder-hooks.patch` adds
+- [x] `ACMain` ships inside Chrome's framework library (`chrome_dll`). Engine
+      hook patch: `patches/argon/embedder-hooks.patch` adds
       `ChromeMainWithDelegate` and `ChromeMainDelegate::CreateChromeContentBrowserClient`.
-      Non-component builds still need `_STMain` and `_OBJC_CLASS_$_AC*` in
+      Non-component builds still need `_ACMain` and `_OBJC_CLASS_$_AC*` in
       `chrome/app/framework.exports`
 - [x] Attach Chrome's tab helpers to our WebContents (autofill, permissions,
       favicons, and the rest Chrome adds in `TabHelpers`)
@@ -107,7 +107,7 @@ StoneCore (//stone_core, inside Chromium Framework.framework)
       times at 120 Hz, input delay
 - [ ] Audit Chrome code that assumes a Chromium window (`BrowserList`,
       `FindBrowserWithTab`, `chrome::Navigate`). List what breaks or no-ops
-- [x] Go: Stone is the daily driver; performance numbers still to be measured
+- [x] Go: Argon is the daily driver; performance numbers still to be measured
 
 ### M1: bridge
 - [x] Application, profiles, tabs
@@ -128,19 +128,19 @@ StoneCore (//stone_core, inside Chromium Framework.framework)
 - Window with traffic lights, sidebar, spaces backed by profiles from the start
 - [x] Address bar and command bar on Chrome's `AutocompleteController`
       (history, shortcuts, bookmarks, search suggestions, inline completion)
-- [x] Profile picker disabled for the embedder (`--stone-embedder`)
+- [x] Profile picker disabled for the embedder (`--argon-embedder`)
 - Tab list, favourites
 - Command bar, shortcuts, swipe between spaces that follows the fingers
 
 ### M3: everyday prompts
-- [x] Tab-modal dialog host (`STTabHost` as `WebContentsModalDialogHost`):
+- [x] Tab-modal dialog host (`ACTabHost` as `WebContentsModalDialogHost`):
       WebAuthn sheet (phone/QR, security keys), HTTP auth
-- [x] Permission prompts (`STPermissionPrompt` sheet), camera/mic requests
+- [x] Permission prompts (`ACPermissionPrompt` sheet), camera/mic requests
 - [x] DevTools docked in the tab view, Inspect from the context menu
 - [x] Downloads panel
 - [ ] iCloud Keychain passkeys: needs Apple's
       `com.apple.developer.web-browser.public-key-credential` entitlement for
-      `dev.stone.browser`
+      `dev.argon.browser`
 - Page info
 - [x] Print preview (WebUI dialog, also from background tabs), PDF viewer
 - [x] Fullscreen video, picture-in-picture

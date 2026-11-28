@@ -1,10 +1,10 @@
-# Building and developing Stone
+# Building and developing Argon
 
-Stone is two halves that build separately:
+Argon is two halves that build separately:
 
-- **StoneCore**: our Chromium-side code in `core/`, compiled into Chromium's
+- **ArgonCore**: our Chromium-side code in `core/`, compiled into Chromium's
   framework from a plain Chromium checkout.
-- **Stone.app**: the Swift/AppKit app in `app/`, an Xcode project that links that
+- **Argon.app**: the Swift/AppKit app in `app/`, an Xcode project that links that
   framework.
 
 ## Requirements
@@ -18,7 +18,7 @@ Stone is two halves that build separately:
 
 ## 1. Chromium checkout (once)
 
-Stone is pinned to Chromium **157.0.8103.38**.
+Argon is pinned to Chromium **157.0.8103.38**.
 
 ```sh
 mkdir -p ~/chromium && cd ~/chromium
@@ -35,15 +35,15 @@ GCLIENT
 PATH=$HOME/depot_tools:$PATH gclient sync --no-history
 ```
 
-## 2. Wire StoneCore into the checkout (once)
+## 2. Wire ArgonCore into the checkout (once)
 
 ```sh
 cd ~/chromium/src
-ln -s ~/stone/core stone_core
-git apply ~/stone/patches/stone/embedder-hooks.patch
+ln -s ~/argon/core argon_core
+git apply ~/argon/patches/argon/embedder-hooks.patch
 ```
 
-`embedder-hooks.patch` holds the small Chromium changes Stone needs. See
+`embedder-hooks.patch` holds the small Chromium changes Argon needs. See
 [Embedder patch](#embedder-patch) below.
 
 Create the build directory with `gn args out/Core`:
@@ -62,21 +62,21 @@ target_cpu = "arm64"
 ## 3. Build
 
 ```sh
-# StoneCore (inside Chromium's framework)
+# ArgonCore (inside Chromium's framework)
 cd ~/chromium/src
-PATH=$HOME/depot_tools:$PATH gn check out/Core '//stone_core/*'
+PATH=$HOME/depot_tools:$PATH gn check out/Core '//argon_core/*'
 PATH=$HOME/depot_tools:$PATH autoninja -C out/Core chrome
 
-# Stone.app
-cd ~/stone/app
+# Argon.app
+cd ~/argon/app
 xcodegen generate          # after adding files or editing project.yml
-xcodebuild -project Stone.xcodeproj -scheme Stone -configuration Debug \
+xcodebuild -project Argon.xcodeproj -scheme Argon -configuration Debug \
   -derivedDataPath build build
 
-open build/Build/Products/Debug/Stone.app
+open build/Build/Products/Debug/Argon.app
 ```
 
-The **Embed StoneCore** build phase (`app/scripts/embed_core.sh`) copies
+The **Embed ArgonCore** build phase (`app/scripts/embed_core.sh`) copies
 `Chromium Framework.framework` into the app. In component builds it also
 symlinks `out/Core/*.dylib` next to the app, so Chromium's helper processes can
 find their libraries.
@@ -94,8 +94,8 @@ find their libraries.
 Restart the app after rebuilding:
 
 ```sh
-pkill -TERM -f "Stone.app/Contents/MacOS/Stone"
-open ~/stone/app/build/Build/Products/Debug/Stone.app
+pkill -TERM -f "Argon.app/Contents/MacOS/Argon"
+open ~/argon/app/build/Build/Products/Debug/Argon.app
 ```
 
 ### Logging
@@ -103,24 +103,24 @@ open ~/stone/app/build/Build/Products/Debug/Stone.app
 Chromium switches pass straight through, for example:
 
 ```sh
-open app/build/Build/Products/Debug/Stone.app --stderr /tmp/stone.log --args \
+open app/build/Build/Products/Debug/Argon.app --stderr /tmp/argon.log --args \
   --enable-logging=stderr --vmodule='*webauthn*=2,*permission*=1'
 ```
 
-Crash reports land in `~/Library/Logs/DiagnosticReports/Stone-*.ips`.
+Crash reports land in `~/Library/Logs/DiagnosticReports/Argon-*.ips`.
 
 ## Embedder patch
 
-Chromium assumes its own browser windows exist. These changes let Stone host
-Chromium without them. All of them are in `patches/stone/embedder-hooks.patch`:
+Chromium assumes its own browser windows exist. These changes let Argon host
+Chromium without them. All of them are in `patches/argon/embedder-hooks.patch`:
 
 - `chrome/app`: `ChromeMainWithDelegate` and
-  `ChromeMainDelegate::CreateChromeContentBrowserClient`, so Stone supplies its
+  `ChromeMainDelegate::CreateChromeContentBrowserClient`, so Argon supplies its
   own main delegate and browser client.
-- `chrome/BUILD.gn`: compiles `//stone_core` into `chrome_dll`.
-- `chrome/browser/ui/tab_helpers.h`: lets `stone_core::STTabHost` attach Chrome's
+- `chrome/BUILD.gn`: compiles `//argon_core` into `chrome_dll`.
+- `chrome/browser/ui/tab_helpers.h`: lets `argon_core::ACTabHost` attach Chrome's
   tab helpers.
-- `--stone-embedder` switch (added by `STMain`): skips the profile picker and the
+- `--argon-embedder` switch (added by `ACMain`): skips the profile picker and the
   post-install extension bubble, which both need a Chromium window.
 - `components/web_modal`, `components/constrained_window`,
   `ui/views/widget/native_widget_mac.mm`: tab-modal dialogs (passkeys, HTTP auth,
@@ -129,16 +129,16 @@ Chromium without them. All of them are in `patches/stone/embedder-hooks.patch`:
   menu.
 - `chrome/browser/ui/cocoa/renderer_context_menu`, `ui/views/controls/menu`:
   page context menus without a views widget.
-- `chrome/browser/devtools`: DevTools docks inside Stone's tab view, and Stone
+- `chrome/browser/devtools`: DevTools docks inside Argon's tab view, and Argon
   tabs count as DevTools "page" targets.
-- `chrome/browser/extensions/api/tabs`, `extension_tab_util`: Stone's tabs and
+- `chrome/browser/extensions/api/tabs`, `extension_tab_util`: Argon's tabs and
   spaces reach `chrome.tabs` and `chrome.windows`. `ExternalTabsDelegate` lists
   the tabs, `TabsEventRouter::OnExternalTab*` fires `onCreated`, `onActivated`
   and `onRemoved` (and tracks them for `onUpdated`), and `windows_api.cc` accepts
   `WindowController`s with no `BrowserWindowInterface` whose type is `normal`.
 - `chrome/browser/ui/views/overlay`: the picture in picture window's top bar in
-  Stone's style (back to tab on the left, minimize and close on the right, SF
-  Symbols). `stone_symbol.h` and `stone_symbol_mac.mm` are new files, so mark
+  Argon's style (back to tab on the left, minimize and close on the right, SF
+  Symbols). `argon_symbol.h` and `argon_symbol_mac.mm` are new files, so mark
   them with `git add -N` before exporting.
 
 After changing any of those files, re-export the patch:
@@ -156,13 +156,13 @@ git diff -- chrome/app chrome/BUILD.gn chrome/browser/ui/tab_helpers.h \
   chrome/browser/extensions/extension_tab_util.h \
   chrome/browser/ui/passwords/passwords_client_ui_delegate.cc \
   chrome/browser/ui/passwords/passwords_client_ui_delegate.h \
-  > ~/stone/patches/stone/embedder-hooks.patch
+  > ~/argon/patches/argon/embedder-hooks.patch
 ```
 
 ## Conventions
 
 - `core/public` is the only API Swift sees. Classes use the `AC` prefix, with
-  Swift names given by `NS_SWIFT_NAME` (`STTab` becomes `Tab`).
+  Swift names given by `NS_SWIFT_NAME` (`ACTab` becomes `Tab`).
 - New Chromium-side code goes in `core/` (never a Chromium patch) unless it must
   change Chromium's own behaviour.
 - Never push to `imputnet/*`. Personal work goes to the `xtanion` remote.

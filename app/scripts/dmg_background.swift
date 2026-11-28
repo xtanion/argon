@@ -75,7 +75,7 @@ func barb(_ spread: CGFloat, _ length: CGFloat, _ bend: CGFloat, seed: CGFloat) 
 barb(-0.72, 26, 2.0, seed: 2.2)
 barb(0.62, 22, -1.6, seed: 4.1)
 
-let caption = "Drag Stone to Applications to install"
+let caption = "Drag Argon to Applications to install"
 let attrs: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 13, weight: .medium),
     .foregroundColor: NSColor(white: 0.45, alpha: 1),

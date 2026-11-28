@@ -1,4 +1,4 @@
-name: Stone
+name: Argon
 options:
   bundleIdPrefix: net.imput
   deploymentTarget:
@@ -9,14 +9,14 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
-    STONE_CORE_OUT: "$(HOME)/chromium/src/out/Core"
-    STONE_CORE_FRAMEWORK: "Chromium Framework"
+    ARGON_CORE_OUT: "$(HOME)/chromium/src/out/Core"
+    ARGON_CORE_FRAMEWORK: "Chromium Framework"
   configs:
     Release:
-      STONE_CORE_OUT: "$(HOME)/chromium/src/out/Release"
+      ARGON_CORE_OUT: "$(HOME)/chromium/src/out/Release"
 
 targets:
-  Stone:
+  Argon:
     type: application
     platform: macOS
     sources:
@@ -26,24 +26,24 @@ targets:
     info:
       path: Sources/Info.plist
       properties:
-        CFBundleName: Stone
-        CFBundleDisplayName: Stone
+        CFBundleName: Argon
+        CFBundleDisplayName: Argon
         CFBundleShortVersionString: "0.4.0"
         CFBundleVersion: "19"
         NSPrincipalClass: BrowserCrApplication
         LSMinimumSystemVersion: "13.0"
         NSSupportsAutomaticGraphicsSwitching: true
         NSHighResolutionCapable: true
-        NSBluetoothAlwaysUsageDescription: "Once Stone has access, websites will be able to ask you for access."
-        NSBluetoothPeripheralUsageDescription: "Once Stone has access, websites will be able to ask you for access."
-        NSCameraUsageDescription: "Once Stone has access, websites will be able to ask you for access."
-        NSMicrophoneUsageDescription: "Once Stone has access, websites will be able to ask you for access."
-        NSLocationUsageDescription: "Once Stone has access, websites will be able to ask you for access."
-        NSLocationWhenInUseUsageDescription: "Once Stone has access, websites will be able to ask you for access."
-        NSAudioCaptureUsageDescription: "Once Stone has access, websites will be able to ask you for access."
-        NSContactsUsageDescription: "Once Stone has access, websites will be able to ask you for access."
-        NSLocalNetworkUsageDescription: "Once Stone has access, websites will be able to ask you for access."
-        NSScreenCaptureUsageDescription: "Once Stone has access, websites will be able to ask you for access."
+        NSBluetoothAlwaysUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSBluetoothPeripheralUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSCameraUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSMicrophoneUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSLocationUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSLocationWhenInUseUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSAudioCaptureUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSContactsUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSLocalNetworkUsageDescription: "Once Argon has access, websites will be able to ask you for access."
+        NSScreenCaptureUsageDescription: "Once Argon has access, websites will be able to ask you for access."
         CFBundleURLTypes:
           - CFBundleURLName: Web site URL
             CFBundleTypeRole: Viewer
@@ -55,18 +55,18 @@ targets:
             LSItemContentTypes: [public.html, public.xhtml]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.stone.browser
+        PRODUCT_BUNDLE_IDENTIFIER: dev.argon.browser
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        SWIFT_OBJC_BRIDGING_HEADER: Sources/Stone-Bridging-Header.h
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Argon-Bridging-Header.h
         HEADER_SEARCH_PATHS: "$(SRCROOT)/../core/public"
-        FRAMEWORK_SEARCH_PATHS: "$(STONE_CORE_OUT)"
-        OTHER_LDFLAGS: "-framework \"$(STONE_CORE_FRAMEWORK)\""
-        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks $(STONE_CORE_OUT)"
+        FRAMEWORK_SEARCH_PATHS: "$(ARGON_CORE_OUT)"
+        OTHER_LDFLAGS: "-framework \"$(ARGON_CORE_FRAMEWORK)\""
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks $(ARGON_CORE_OUT)"
         ENABLE_HARDENED_RUNTIME: false
         CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_STYLE: Manual
         DEVELOPMENT_TEAM: Z7JCWW3N99
     postBuildScripts:
-      - name: Embed StoneCore
+      - name: Embed ArgonCore
         script: "\"$SRCROOT/scripts/embed_core.sh\""
         basedOnDependencyAnalysis: false

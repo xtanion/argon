@@ -97,7 +97,7 @@ enum ImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notFound(let source):
-            return "Couldn't find \(source.title)'s data. Open \(source.title) once, or allow Stone to access data from other apps in System Settings \u{2192} Privacy & Security."
+            return "Couldn't find \(source.title)'s data. Open \(source.title) once, or allow Argon to access data from other apps in System Settings \u{2192} Privacy & Security."
         case .unreadable(let what):
             return "Couldn't read \(what)."
         }
@@ -464,7 +464,7 @@ enum ChromiumProfileReader {
     private static func withCopy<T>(of database: URL, _ body: (OpaquePointer) -> T) -> T? {
         let manager = FileManager.default
         guard manager.fileExists(atPath: database.path) else { return nil }
-        let folder = manager.temporaryDirectory.appendingPathComponent("StoneImport-" + UUID().uuidString)
+        let folder = manager.temporaryDirectory.appendingPathComponent("ArgonImport-" + UUID().uuidString)
         defer { try? manager.removeItem(at: folder) }
         do {
             try manager.createDirectory(at: folder, withIntermediateDirectories: true)

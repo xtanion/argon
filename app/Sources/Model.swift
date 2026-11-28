@@ -421,7 +421,7 @@ struct SavedState: Codable, Sendable {
     var activeSpace: Int
     var favorites: [String: [SavedTab]]? = nil
 
-    private static let key = "StoneBrowserState"
+    private static let key = "ArgonBrowserState"
 
     static let initial = SavedState(
         spaces: [
@@ -548,7 +548,7 @@ enum AddressInput {
 }
 
 extension Notification.Name {
-    static let downloadsDidChange = Notification.Name("StoneDownloadsDidChange")
+    static let downloadsDidChange = Notification.Name("ArgonDownloadsDidChange")
 }
 
 enum DownloadEvent {

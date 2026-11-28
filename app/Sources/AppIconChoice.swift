@@ -1,26 +1,38 @@
 import AppKit
 
 enum AppIconStyle: String, CaseIterable {
-    case blue, beijing, tokyo, perth, newYork
+    case argon = "blue", ocean, meadow, dusk, sunset, tide
 
     var title: String {
         switch self {
-        case .blue: "Stone"
-        case .beijing: "Daybreak"
-        case .tokyo: "Dusk"
-        case .perth: "Sunset"
-        case .newYork: "Tide"
+        case .argon: "Argon"
+        case .ocean: "Ocean"
+        case .meadow: "Meadow"
+        case .dusk: "Dusk"
+        case .sunset: "Sunset"
+        case .tide: "Tide"
         }
     }
 
-    var gradient: [UInt32]? {
+    // Logo stroke on the light tile, then on the dark tile.
+    var stroke: (light: UInt32, dark: UInt32) {
         switch self {
-        case .blue: nil
-        case .beijing: [0x1A78F0, 0x308FEC, 0x56A0CF, 0x9BB3A7, 0xDECD93, 0xFBE2A1]
-        case .tokyo: [0x4D62D6, 0x6C7FDB, 0x8F8FCB, 0xB798A1, 0xDFAB7C, 0xF6C377]
-        case .perth: [0xA9C3F0, 0xC7D0EA, 0xD8C2CA, 0xE6A189, 0xF4914E, 0xFCA03F]
-        case .newYork: [0x122941, 0x1B3A57, 0x204D62, 0x3B6D6E, 0x699E88, 0x94C7A7]
+        case .argon: (0x2A2723, 0xEDE8E0)
+        case .ocean: (0x0A84FF, 0x409CFF)
+        case .meadow: (0x28B44C, 0x30D158)
+        case .dusk: (0x4D62D6, 0x8F9BEB)
+        case .sunset: (0xF4782E, 0xFCA03F)
+        case .tide: (0x204D62, 0x94C7A7)
         }
+    }
+
+    var wash: [UInt32] {
+        let (light, dark) = stroke
+        return [dark, light, dark]
+    }
+
+    func mark(dark: Bool) -> NSImage? {
+        NSImage(data: Data(AppIcon.logo(stroke: dark ? stroke.dark : stroke.light).utf8))
     }
 }
 
@@ -37,30 +49,22 @@ enum AppIcon {
 
     static func apply() {
         let style = Preferences.appIcon
-        NSApp.applicationIconImage = style == .blue
+        NSApp.applicationIconImage = style == .argon
             ? nil
             : image(style, dark: Palette.isDark(NSApp.effectiveAppearance), size: 512)
     }
 
-    // Level per cell of the top-left quadrant of the 12x12 pixel grid; the
-    // other quadrants mirror it.
-    private static let quadrant: [[Int]] = [
-        [0, 0, 0, 0, 1, 1],
-        [0, 0, 1, 1, 2, 3],
-        [0, 1, 2, 4, 5, 6],
-        [0, 1, 4, 6, 7, 8],
-        [1, 2, 5, 7, 9, 10],
-        [1, 3, 6, 8, 10, 11],
-    ]
-    private static let opacity: [CGFloat] = [0, 0.22, 0.35, 0.48, 0.6, 0.75, 0.9, 1, 1, 1, 1, 1]
-    private static let blue: [UInt32] = [0, 0x1549F8, 0x1549F8, 0x1A4DF8, 0x1F50F9, 0x2A58F9, 0x305DFA,
-                                         0x3D67FB, 0x456DFB, 0x4F74FC, 0x5A7DFD, 0x6E8BFE]
-    private static let edges: [CGFloat] = [104, 172, 240, 308, 376, 444, 512, 580, 648, 716, 784, 852, 920]
-
-    // Cells are premixed with the tile colour and overlap slightly: translucent
-    // abutting squares let the background bleed through as hairline seams.
-    private static func level(_ column: Int, _ row: Int) -> Int {
-        quadrant[row < 6 ? row : 11 - row][column < 6 ? column : 11 - column]
+    // Same art as Resources/AppIcon.icon/Assets/logo-*.svg (docs/logo/argon-logo.svg on the 1024 canvas).
+    nonisolated static func logo(stroke: UInt32) -> String {
+        """
+        <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+        <g transform="translate(110.88 105.82) scale(33.7079)" fill="none" stroke="#\(String(format: "%06X", stroke))" stroke-linecap="round">
+        <path stroke-width="1.8" d="M3.2 13.6C3 8.6 6.6 4.4 12.1 4.1c5.2-.3 8.8 3 8.7 7.6-.1 5-4.2 8.4-9.4 8.3-4.5-.1-8-2.6-8.2-6.4z"/>
+        <path stroke-width="1.3" d="M7.4 13.1c-.1-2.6 2-4.7 5-4.8 2.7-.1 4.6 1.6 4.5 3.9-.1 2.5-2.3 4.1-5 4-2.5 0-4.4-1.2-4.5-3.1z"/>
+        <path stroke-width="1.3" d="M11 12.3c0-.8.7-1.4 1.6-1.4.8 0 1.4.5 1.3 1.2 0 .7-.7 1.2-1.5 1.2-.8 0-1.4-.4-1.4-1z"/>
+        </g>
+        </svg>
+        """
     }
 
     static func color(_ hex: UInt32) -> NSColor {
@@ -68,14 +72,8 @@ enum AppIcon {
                 blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 
-    private static func sample(_ stops: [UInt32], _ t: CGFloat) -> NSColor {
-        let scaled = min(1, max(0, t)) * CGFloat(stops.count - 1)
-        let index = min(Int(scaled), stops.count - 2)
-        return color(stops[index]).blended(withFraction: scaled - CGFloat(index), of: color(stops[index + 1])) ?? color(stops[index])
-    }
-
-    // Draws the full macOS icon: the rounded tile inside Apple's 1024 grid,
-    // with the pixel blob filling it the way the bundled icon does.
+    // The full macOS icon: the rounded tile inside Apple's 1024 grid on the system's default
+    // icon background (what AppIcon.icon gets with no fill of its own), with the mark on it.
     static func image(_ style: AppIconStyle, dark: Bool, size: CGFloat) -> NSImage {
         NSImage(size: NSSize(width: size, height: size), flipped: true) { rect in
             let unit = rect.width / 1024
@@ -89,94 +87,15 @@ enum AppIcon {
             shadow.shadowBlurRadius = 10 * unit
             shadow.shadowOffset = NSSize(width: 0, height: -6 * unit)
             shadow.set()
-            let background = dark ? NSColor(srgbRed: 0.004, green: 0, blue: 0.031, alpha: 1) : NSColor.white
-            background.setFill()
+            NSColor.white.setFill()
             shape.fill()
             NSGraphicsContext.restoreGraphicsState()
+            let fill = dark ? (top: color(0x3C3C41), bottom: color(0x1A1A1D)) : (top: color(0xFFFFFF), bottom: color(0xE6E6EB))
+            NSGradient(starting: fill.top, ending: fill.bottom)?.draw(in: shape, angle: 90)
 
-            if style == .blue {
-                drawLogo(in: tile, background: background)
-                return true
-            }
-
-            NSGraphicsContext.saveGraphicsState()
-            shape.addClip()
-            let scale = tile.width / 1024
-            func position(_ value: CGFloat) -> CGFloat { (value * scale).rounded() }
-            for row in 0..<12 {
-                for column in 0..<12 {
-                    let level = level(column, row)
-                    guard level > 0 else { continue }
-                    let base = style.gradient.map { sample($0, (CGFloat(row) + 0.5) / 12) } ?? color(blue[level])
-                    (base.blended(withFraction: 1 - opacity[level], of: background) ?? base).setFill()
-                    let x0 = position(edges[column]), x1 = position(edges[column + 1])
-                    let y0 = position(edges[row]), y1 = position(edges[row + 1])
-                    NSRect(x: tile.minX + x0, y: tile.minY + y0, width: x1 - x0 + unit, height: y1 - y0 + unit).fill()
-                }
-            }
-            NSGraphicsContext.restoreGraphicsState()
+            style.mark(dark: dark)?.draw(in: tile, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             return true
         }
-    }
-}
-
-extension AppIcon {
-    static let logoBlue: UInt32 = 0x0A84FF
-    static let logoGreen: UInt32 = 0x30D158
-
-    // Same geometry as Resources/AppIcon.icon/Assets/logo-*.svg: a 480pt circle split by
-    // two channels into a blue middle band and green sides, at 1.25x from (212, 212) of the tile.
-    static func drawLogo(in tile: NSRect, background: NSColor) {
-        let unit = tile.width / 1024
-        func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
-            NSPoint(x: tile.minX + (212 + x * 1.25) * unit, y: tile.minY + (212 + y * 1.25) * unit)
-        }
-        func channelA(_ path: NSBezierPath) {
-            path.line(to: p(276, 95))
-            path.curve(to: p(220, 150), controlPoint1: p(276, 135), controlPoint2: p(255, 150))
-            path.curve(to: p(162, 205), controlPoint1: p(185, 150), controlPoint2: p(162, 170))
-            path.line(to: p(162, 270))
-            path.curve(to: p(105, 325), controlPoint1: p(162, 305), controlPoint2: p(140, 325))
-            path.line(to: p(-20, 325))
-        }
-        func channelB(_ path: NSBezierPath) {
-            path.line(to: p(320, 225))
-            path.curve(to: p(276, 270), controlPoint1: p(290, 225), controlPoint2: p(276, 245))
-            path.curve(to: p(330, 330), controlPoint1: p(276, 300), controlPoint2: p(295, 315))
-            path.curve(to: p(376, 395), controlPoint1: p(360, 343), controlPoint2: p(376, 360))
-            path.line(to: p(376, 500))
-        }
-        let circleRect = NSRect(origin: p(0, 0), size: NSSize(width: 600 * unit, height: 600 * unit))
-        NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(ovalIn: circleRect).addClip()
-        color(logoBlue).setFill()
-        circleRect.fill()
-        color(logoGreen).setFill()
-        let left = NSBezierPath()
-        left.move(to: p(276, -20))
-        channelA(left)
-        left.line(to: p(-20, -20))
-        left.close()
-        left.fill()
-        let right = NSBezierPath()
-        right.move(to: p(500, 225))
-        channelB(right)
-        right.line(to: p(500, 500))
-        right.close()
-        right.fill()
-        background.setStroke()
-        let a = NSBezierPath()
-        a.move(to: p(276, -20))
-        channelA(a)
-        let b = NSBezierPath()
-        b.move(to: p(500, 225))
-        channelB(b)
-        for channel in [a, b] {
-            channel.lineWidth = 42 * 1.25 * unit
-            channel.lineJoinStyle = .round
-            channel.stroke()
-        }
-        NSGraphicsContext.restoreGraphicsState()
     }
 }
 
@@ -201,13 +120,13 @@ final class AppIconBanner: NSView {
         let title = NSTextField(labelWithString: "App Icon")
         title.font = .inter(13, weight: .semibold)
         title.textColor = .labelColor
-        let subtitle = NSTextField(labelWithString: "Shown in the Dock while Stone is running. Follows light and dark mode.")
+        let subtitle = NSTextField(labelWithString: "Shown in the Dock while Argon is running. Follows light and dark mode.")
         subtitle.font = SettingsStyle.subtitle
         subtitle.textColor = .secondaryLabelColor
 
         let row = NSStackView()
         row.orientation = .horizontal
-        row.spacing = 12
+        row.spacing = 8
         row.distribution = .equalSpacing
         for style in AppIconStyle.allCases {
             let tile = AppIconTile(style: style) { [weak self] in self?.choose(style) }
@@ -251,9 +170,8 @@ final class AppIconBanner: NSView {
     private func sync() {
         let style = Preferences.appIcon
         for tile in tiles { tile.isSelected = tile.style == style }
-        let stops = style.gradient ?? [AppIcon.logoGreen, AppIcon.logoBlue, AppIcon.logoGreen]
         let dark = Palette.isDark(effectiveAppearance)
-        let picks = [stops[0], stops[stops.count / 2], stops[stops.count - 1]]
+        let picks = style.wash
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.25)
         wash.colors = picks.map { AppIcon.color($0).withAlphaComponent(dark ? 0.32 : 0.38).cgColor }
@@ -306,15 +224,15 @@ private final class AppIconTile: NSView {
         NSLayoutConstraint.activate([
             imageView.topAnchor.constraint(equalTo: topAnchor),
             imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 76),
-            imageView.heightAnchor.constraint(equalToConstant: 76),
+            imageView.widthAnchor.constraint(equalToConstant: 68),
+            imageView.heightAnchor.constraint(equalToConstant: 68),
             tick.centerXAnchor.constraint(equalTo: imageView.trailingAnchor, constant: -12),
             tick.centerYAnchor.constraint(equalTo: imageView.topAnchor, constant: 12),
             label.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 2),
             label.leadingAnchor.constraint(equalTo: leadingAnchor),
             label.trailingAnchor.constraint(equalTo: trailingAnchor),
             label.bottomAnchor.constraint(equalTo: bottomAnchor),
-            widthAnchor.constraint(equalToConstant: 80),
+            widthAnchor.constraint(equalToConstant: 72),
         ])
         refresh()
     }

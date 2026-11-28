@@ -5,22 +5,20 @@ import AppKit
 final class NowPlayingWidget: SidebarWidget {
     weak var sidebar: SidebarView?
     private(set) var tab: BrowserTab?
+    private let muteButton = IconButton(symbol: "speaker.fill", size: 12)
     private let pipButton = IconButton(symbol: "pip", size: 12, toolTip: "Picture in Picture")
     private let closeButton = IconButton(symbol: "xmark", size: 11, toolTip: "Close")
-    private let iconButton = IconButton(symbol: "globe", size: 13, toolTip: "Go to Tab")
     private let previousButton = IconButton(symbol: "backward.end.fill", size: 12, toolTip: "Previous")
-    private let playButton = IconButton(symbol: "pause.fill", size: 14)
+    private let playButton = IconButton(symbol: "pause.fill", size: 13)
     private let nextButton = IconButton(symbol: "forward.end.fill", size: 12, toolTip: "Next")
-    private let muteButton = IconButton(symbol: "speaker.fill", size: 12)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         canExpand = true
-        setAccessories([pipButton, closeButton])
-        for view in [iconButton, previousButton, playButton, nextButton, muteButton] as [NSView] {
-            addSubview(view)
-        }
-        iconButton.action = { [weak self] in self?.goToTab() }
+        setAccessories([muteButton, pipButton, closeButton])
+        setRowControls([previousButton, playButton, nextButton])
+        primaryButton.toolTip = "Go to Tab"
+        primaryButton.action = { [weak self] in self?.goToTab() }
         previousButton.action = { [weak self] in self?.tab?.tab?.previousTrack() }
         nextButton.action = { [weak self] in self?.tab?.tab?.nextTrack() }
         playButton.action = { [weak self] in
@@ -41,9 +39,10 @@ final class NowPlayingWidget: SidebarWidget {
     func configure(_ tab: BrowserTab?) {
         self.tab = tab
         if let tab, let page = tab.tab {
-            titleLabel.stringValue = page.mediaTitle.isEmpty ? tab.title : page.mediaTitle
-            iconButton.setImage(Self.favicon(tab.favicon))
-            playButton.setSymbol(page.isPlayingMedia ? "pause.fill" : "play.fill", size: 14)
+            primaryButton.title = page.mediaTitle.isEmpty ? tab.title : page.mediaTitle
+            primaryButton.setImage(Self.favicon(tab.favicon))
+            titleLabel.stringValue = tab.url?.host.map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 } ?? tab.title
+            playButton.setSymbol(page.isPlayingMedia ? "pause.fill" : "play.fill", size: 13)
             playButton.toolTip = page.isPlayingMedia ? "Pause" : "Play"
             previousButton.isEnabled = page.canPlayPreviousTrack
             nextButton.isEnabled = page.canPlayNextTrack
@@ -69,13 +68,4 @@ final class NowPlayingWidget: SidebarWidget {
     }
 
     override func titleClicked() { goToTab() }
-
-    override func layoutRow(in rect: NSRect) {
-        let size: CGFloat = 26
-        let controls = [iconButton, previousButton, playButton, nextButton, muteButton]
-        for (index, button) in controls.enumerated() {
-            let center = rect.width * (CGFloat(index) + 0.5) / CGFloat(controls.count)
-            button.frame = NSRect(x: (center - size / 2).rounded(), y: rect.minY + (rect.height - size) / 2, width: size, height: size)
-        }
-    }
 }

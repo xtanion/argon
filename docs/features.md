@@ -35,16 +35,16 @@
 - **⌘T or ⌘L** opens a command bar built on Chrome's omnibox, with history,
   inline completion and your search engine.
 - **Switch to an open tab** instead of opening it twice.
-- **Faster loads**: Stone starts connecting to the highlighted result before you
+- **Faster loads**: Argon starts connecting to the highlighted result before you
   press Return.
 
-## Little Stone
+## Little Argon
 
 - **⌥⌘N in any app** opens a floating search bar, and the result opens in a
-  small Little Stone window.
-- **Links from other apps** can open in Little Stone instead of your main
+  small Little Argon window.
+- **Links from other apps** can open in Little Argon instead of your main
   window. Move the page into a space when you want to keep it.
-- **⌥⌘-click** a link to open it in Little Stone.
+- **⌥⌘-click** a link to open it in Little Argon.
 
 ## Pages
 
@@ -68,7 +68,7 @@
 - **Passkeys** through your phone or a security key.
 - **Permissions**: camera, microphone, location and notification requests
   appear as a card under the address pill. If macOS has turned one off for
-  Stone, the card links to the right pane in System Settings.
+  Argon, the card links to the right pane in System Settings.
 - **HTTP auth, file uploads and downloads**, all using Chrome's own logic.
 
 ## Import
@@ -98,7 +98,7 @@
 
 - **Frameless window** option where the page runs to the window's edges.
 - **Shortcuts list** in Settings → Shortcuts, searchable by action or key.
-- **App icon** choices: Stone, Daybreak, Dusk, Sunset and Tide.
+- **App icon** choices: Argon, Daybreak, Dusk, Sunset and Tide.
 - **In-place updates** from the card at the bottom of the sidebar, checked
   against GitHub releases every few hours.
 - **Warn before quitting** with ⌘Q pressed twice.

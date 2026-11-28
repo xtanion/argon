@@ -1,6 +1,6 @@
-# Stone: Design Reference
+# Argon: Design Reference
 
-The source of truth for Stone's Arc-inspired look. Check this file before adding
+The source of truth for Argon's Arc-inspired look. Check this file before adding
 or restyling anything, and update it when a value changes.
 
 These values were first built as a Chromium Views patch for Helium
@@ -215,7 +215,8 @@ Arc-style spaces inside one window: each space is its own tab list, switched wit
 Every card that docks above the space bar (now playing, app update, and any future one) is a `SidebarWidget` subclass and follows one pattern:
 
 - **Card:** full width minus 2 x padding, radius 10 (continuous), fill `Palette.widget`, 1px `Palette.widgetBorder`. Widgets stack upward from the space bar with 6 between them.
-- **Row:** the bottom 34pt is always visible and holds the widget's primary controls: evenly spaced `IconButton`s (now playing) or one full-width `SidebarWidgetButton` (icon + label, as in the update widget). Progress fills the row with `Palette.tabHover`.
+- **Row:** the bottom 34pt is always visible and is laid out by `SidebarWidget` itself, never by a subclass: a `primaryButton` (`SidebarWidgetButton`, 16pt icon + 12pt label, the widget's main action) filling the width, then optional 26pt row controls (`setRowControls`) on the right. Now playing: favicon + media title, then previous/play/next. Update: status icon + action label, no controls. Progress fills the row with `Palette.tabHover`.
+- **Header contents:** the title is context for the row (the site for now playing, the version for an update); secondary actions go in the accessories (mute, picture in picture, close; release notes, remind me later).
 - **Expanding:** on hover, an expandable widget grows upward over the tab list (0.22s, the sidebar's ease-out) and pushes the widgets above it up. The tab list never moves. A 30pt header appears with the title (12.5 medium, clicking it does the widget's "open" action) and accessory `IconButton`s on the right, closing with `xmark`. An optional body sits between the header and the row. The header and body fade in over 0.2s.
 - **Showing and hiding:** setting `isPresented` fades the card in or out over 0.2s while the list resizes.
 - Content is laid out from the bottom edge so the row stays still while the card grows.

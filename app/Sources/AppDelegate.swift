@@ -53,7 +53,7 @@ final class AppDelegate: NSObject, ApplicationDelegate {
     private func start(_ spaces: [Space], activeIndex: Int) {
         guard !spaces.isEmpty else { return }
         NSApp.mainMenu = MainMenu.build()
-        LittleStone.updateHotKey()
+        LittleArgon.updateHotKey()
         let application = Application.shared
         let controller = BrowserWindowController(spaces: spaces, activeIndex: activeIndex)
         self.controller = controller

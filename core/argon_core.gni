@@ -1,0 +1,11 @@
+# Copyright 2026 The Argon Authors
+# You can use, redistribute, and/or modify this source code under
+# the terms of the GPL-3.0 license that can be found in the LICENSE file.
+
+# Compiled into Chrome's framework library next to ChromeMainDelegate, which is
+# not a separate target.
+argon_core_app_sources = [
+  "//argon_core/app/ac_main.mm",
+  "//argon_core/app/ac_main_delegate.cc",
+  "//argon_core/app/ac_main_delegate.h",
+]

@@ -52,7 +52,7 @@ final class BackgroundWorker {
         let perform: @MainActor (JobContext) async -> Error?
     }
 
-    private static let defaultsPrefix = "StoneWorker."
+    private static let defaultsPrefix = "ArgonWorker."
     private static let coalescingWindow: TimeInterval = 60
     private static let minimumBackoff: TimeInterval = 5 * 60
 

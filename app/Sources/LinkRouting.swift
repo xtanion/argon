@@ -7,21 +7,21 @@ struct LinkRule: Codable, Equatable, Sendable {
 }
 
 enum ExternalLinkDestination: String {
-    case littleStone
+    case littleArgon
     case activeSpace
 }
 
 extension Notification.Name {
-    static let linkRulesDidChange = Notification.Name("StoneLinkRulesDidChange")
+    static let linkRulesDidChange = Notification.Name("ArgonLinkRulesDidChange")
 }
 
 @MainActor
 enum LinkRouter {
-    private static let rulesKey = "StoneLinkRules"
-    private static let destinationKey = "StoneExternalLinkDestination"
+    private static let rulesKey = "ArgonLinkRules"
+    private static let destinationKey = "ArgonExternalLinkDestination"
 
     static var destination: ExternalLinkDestination {
-        get { UserDefaults.standard.string(forKey: destinationKey).flatMap(ExternalLinkDestination.init) ?? .littleStone }
+        get { UserDefaults.standard.string(forKey: destinationKey).flatMap(ExternalLinkDestination.init) ?? .littleArgon }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: destinationKey) }
     }
 

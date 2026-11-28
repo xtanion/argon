@@ -34,7 +34,7 @@ final class GeneralSettingsPane: SettingsPane {
         }
 
         let quitting = SettingsCard([
-            SettingsRow(title: "Warn before quitting", subtitle: "Press \u{2318}Q twice to quit Stone.",
+            SettingsRow(title: "Warn before quitting", subtitle: "Press \u{2318}Q twice to quit Argon.",
                         accessory: SettingsSwitch(isOn: Preferences.warnBeforeQuitting) { Preferences.warnBeforeQuitting = $0 }),
             SettingsRow(title: "Show sidebar on launch", subtitle: "Turn off to start with the sidebar hidden.",
                         accessory: SettingsSwitch(isOn: Preferences.showSidebarOnLaunch) { Preferences.showSidebarOnLaunch = $0 }),
@@ -82,7 +82,7 @@ final class GeneralSettingsPane: SettingsPane {
         ])
 
         let updates = SettingsCard([
-            SettingsRow(title: "Check for updates automatically", subtitle: "Stone looks for new releases on GitHub every few hours.",
+            SettingsRow(title: "Check for updates automatically", subtitle: "Argon looks for new releases on GitHub every few hours.",
                         accessory: SettingsSwitch(isOn: Preferences.checkForUpdates) { Preferences.checkForUpdates = $0 }),
         ])
 
@@ -106,7 +106,7 @@ final class GeneralSettingsPane: SettingsPane {
     }
 
     private func makeFooter() -> NSView {
-        var parts = ["Stone " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")]
+        var parts = ["Argon " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")]
         if let chromium = Self.chromiumVersion { parts.append("Chromium " + chromium) }
         let label = NSTextField(labelWithString: parts.joined(separator: "  \u{00B7}  "))
         label.font = .inter(11.5)
@@ -187,7 +187,7 @@ final class DefaultBrowserChip: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         let surface = SettingsSurface()
         surface.translatesAutoresizingMaskIntoConstraints = false
-        let label = NSTextField(labelWithString: "Stone isn\u{2019}t your default browser")
+        let label = NSTextField(labelWithString: "Argon isn\u{2019}t your default browser")
         label.font = SettingsStyle.title
         label.textColor = .secondaryLabelColor
         let button = SettingsButton("Set as Default", prominent: true) { [weak self] in self?.onMakeDefault?() }
@@ -535,9 +535,9 @@ final class SpacesSettingsPane: SettingsPane, NSTextFieldDelegate {
 
 @MainActor
 final class LinksSettingsPane: SettingsPane, NSTextFieldDelegate {
-    private let hotKeySwitch = SettingsSwitch(isOn: true) { LittleStone.hotKeyEnabled = $0 }
-    private let modifierClickSwitch = SettingsSwitch(isOn: true) { LittleStone.modifierClickEnabled = $0 }
-    private let externalLinksSwitch = SettingsSwitch(isOn: true) { LinkRouter.destination = $0 ? .littleStone : .activeSpace }
+    private let hotKeySwitch = SettingsSwitch(isOn: true) { LittleArgon.hotKeyEnabled = $0 }
+    private let modifierClickSwitch = SettingsSwitch(isOn: true) { LittleArgon.modifierClickEnabled = $0 }
+    private let externalLinksSwitch = SettingsSwitch(isOn: true) { LinkRouter.destination = $0 ? .littleArgon : .activeSpace }
     private let list = SettingsList<LinkRule>(title: "Link Rules")
     private let patternField = NSTextField()
     private let spacePopUp = SettingsPopUp { _ in }
@@ -547,17 +547,17 @@ final class LinksSettingsPane: SettingsPane, NSTextFieldDelegate {
     override func loadView() {
         super.loadView()
         let little = SettingsCard([
-            SettingsRow(title: "Open Little Stone when I press \u{2325}\u{2318}N in any app",
-                        subtitle: "Little Stone is a small window for quick lookups. Move it into a Space with \u{2318}O.",
+            SettingsRow(title: "Open Little Argon when I press \u{2325}\u{2318}N in any app",
+                        subtitle: "Little Argon is a small window for quick lookups. Move it into a Space with \u{2318}O.",
                         accessory: hotKeySwitch, wraps: true),
-            SettingsRow(title: "Open Little Stone when clicking links with \u{2325}\u{2318} held",
+            SettingsRow(title: "Open Little Argon when clicking links with \u{2325}\u{2318} held",
                         accessory: modifierClickSwitch),
-            SettingsRow(title: "Links from other apps open in Little Stone",
+            SettingsRow(title: "Links from other apps open in Little Argon",
                         accessory: externalLinksSwitch),
         ])
 
         let intro = NSTextField(wrappingLabelWithString:
-            "Links that match a rule skip Little Stone and open straight in their Space. A rule matches the site and its subdomains, or a path such as github.com/acme.")
+            "Links that match a rule skip Little Argon and open straight in their Space. A rule matches the site and its subdomains, or a path such as github.com/acme.")
         intro.font = SettingsStyle.subtitle
         intro.textColor = .secondaryLabelColor
 
@@ -591,9 +591,9 @@ final class LinksSettingsPane: SettingsPane, NSTextFieldDelegate {
 
     override func reload() {
         _ = view
-        hotKeySwitch.state = LittleStone.hotKeyEnabled ? .on : .off
-        modifierClickSwitch.state = LittleStone.modifierClickEnabled ? .on : .off
-        externalLinksSwitch.state = LinkRouter.destination == .littleStone ? .on : .off
+        hotKeySwitch.state = LittleArgon.hotKeyEnabled ? .on : .off
+        modifierClickSwitch.state = LittleArgon.modifierClickEnabled ? .on : .off
+        externalLinksSwitch.state = LinkRouter.destination == .littleArgon ? .on : .off
         let selectedID = spacePopUp.selectedItem?.representedObject as? String
         spacePopUp.removeAllItems()
         for space in browser?.allSpaces ?? [] {

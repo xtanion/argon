@@ -85,17 +85,17 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         })
     }
 
-    // Little Stone comes back at the size and place it was last left, like any Mac window.
+    // Little Argon comes back at the size and place it was last left, like any Mac window.
     private func initialFrame() -> NSRect {
         let mouseScreen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
         let cascade = CGFloat(Self.open.count - 1) * 26
-        if let saved = LittleStone.lastFrame,
+        if let saved = LittleArgon.lastFrame,
            let screen = NSScreen.screens.max(by: { Self.overlap(saved, $0.visibleFrame) < Self.overlap(saved, $1.visibleFrame) }),
            Self.overlap(saved, screen.visibleFrame) > 0.8 * saved.width * saved.height {
             return Self.fit(saved.offsetBy(dx: cascade, dy: -cascade), in: screen.visibleFrame)
         }
         let visible = mouseScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let size = LittleStone.lastFrame?.size ?? Self.defaultSize
+        let size = LittleArgon.lastFrame?.size ?? Self.defaultSize
         let frame = NSRect(x: visible.midX - size.width / 2 + cascade, y: visible.midY - size.height / 2 - cascade,
                            width: size.width, height: size.height)
         return Self.fit(frame, in: visible)
@@ -117,7 +117,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
 
     private func rememberFrame() {
         guard tracksFrame, !adopted, let window, !window.styleMask.contains(.fullScreen) else { return }
-        LittleStone.lastFrame = window.frame
+        LittleArgon.lastFrame = window.frame
     }
 
     func windowDidResize(_ notification: Notification) { rememberFrame() }
@@ -181,7 +181,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
             openInBrowser(space: target)
             return
         }
-        guard !LittleStone.skipProfileWarning, let window else {
+        guard !LittleArgon.skipProfileWarning, let window else {
             reopen(in: target)
             return
         }
@@ -195,7 +195,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, Browse
         alert.beginSheetModal(for: window) { [weak self] response in
             MainActor.assumeIsolated {
                 guard response == .alertFirstButtonReturn else { return }
-                if alert.suppressionButton?.state == .on { LittleStone.skipProfileWarning = true }
+                if alert.suppressionButton?.state == .on { LittleArgon.skipProfileWarning = true }
                 self?.reopen(in: target)
             }
         }

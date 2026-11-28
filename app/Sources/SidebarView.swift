@@ -3141,7 +3141,7 @@ final class SiteControlsPanel: OverlayPanel {
     }
 
     private func updateZoom() {
-        // Older StoneCore builds lack zoomPercent; show the controls without a value.
+        // Older ArgonCore builds lack zoomPercent; show the controls without a value.
         let percent = tab.flatMap { $0.responds(to: #selector(getter: Tab.zoomPercent)) ? $0.zoomPercent : nil } ?? 100
         zoomLabel?.stringValue = tab?.responds(to: #selector(getter: Tab.zoomPercent)) == false ? "Zoom" : "\(percent)%"
         guard let zoomLabel, let resetZoomButton else { return }
@@ -3280,7 +3280,7 @@ final class SecurityPill: HoverView {
         case "https": ("lock.fill", "Secure")
         case "http": ("exclamationmark.triangle.fill", "Not Secure")
         case "file": ("doc.fill", "Local File")
-        case "chrome", "about": ("gearshape.fill", "Stone Page")
+        case "chrome", "about": ("gearshape.fill", "Argon Page")
         default: ("info.circle.fill", "Site Info")
         }
         label = .sidebarLabel(text, font: .systemFont(ofSize: 13, weight: .medium), color: Palette.text)
